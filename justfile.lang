@@ -1,0 +1,12 @@
+# OpenTofu verbs — hand-written, not a copier overlay: this repo is a
+# one-off (ADR-0002; dotfiles ADR-0024). The config lives at the repo root,
+# so tenv resolves the runtime from required_version in the cwd.
+
+# Run OpenTofu under the routine scoped token (init, plan, state, ...).
+tofu *args:
+    tofu {{ args }}
+
+# Apply under the elevated session token — mutations need Administration,
+# which the routine GH_TOKEN deliberately lacks.
+tofu-apply *args:
+    GITHUB_TOKEN=$(env -u GH_TOKEN -u GITHUB_TOKEN gh auth token) tofu apply {{ args }}

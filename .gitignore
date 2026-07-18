@@ -2,3 +2,12 @@
 # A language overlay's own .gitignore needs hand-merging with this one;
 # copier can't merge text files across templates.
 .envrc.local
+
+# OpenTofu — never commit state (secrets land in it — ADR-0002), plans, or
+# the provider cache. The lockfile (.terraform.lock.hcl) IS committed.
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+crash.*.log
