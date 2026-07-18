@@ -43,6 +43,24 @@ locals {
         "repos-as-code",
       ]
     }
+
+    project-starter-template = {
+      description      = "Starter template for new Python projects with modern tooling and best practices"
+      visibility       = "public"
+      has_issues       = true
+      has_projects     = false
+      has_wiki         = false
+      has_discussions  = false
+      allow_auto_merge = true
+      topics = [
+        "python",
+        "template",
+        "project-template",
+        "copier",
+        "uv",
+        "ruff",
+      ]
+    }
   }
 
   labels = {
@@ -55,6 +73,8 @@ locals {
     "enhancement"         = { color = "a2eeef", description = "New feature or request" }
     "epic"                = { color = "5319E7", description = "Large multi-part effort" }
     "good first issue"    = { color = "7057ff", description = "Good for newcomers" }
+    "needs-plan-review"   = { color = "5319E7", description = "Needs architectural review before implementation" }
+    "plan-approved"       = { color = "0E8A16", description = "Plan has been reviewed and approved" }
     "priority: high"      = { color = "B60205", description = "Groom/act on soon" }
     "priority: low"       = { color = "C5DEF5", description = "Someday / low urgency" }
     "priority: medium"    = { color = "FBCA04", description = "Normal queue" }
