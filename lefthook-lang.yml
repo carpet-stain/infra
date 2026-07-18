@@ -1,3 +1,19 @@
-# Language-overlay socket — intentionally empty in the base. A language
-# overlay overwrites this file with its jobs (tagged `lang`); lefthook.yml's
-# `extends` picks it up either way. Never put base jobs here.
+# OpenTofu jobs (tag `lang`) — hand-written, not a copier overlay: this
+# repo is a one-off (ADR-0002; dotfiles ADR-0024). tofu.yml's CI job runs
+# this tag slice; lefthook.yml's `extends` picks it up locally.
+pre-commit:
+  jobs:
+    - name: tofu-format
+      tags: [lang]
+      glob: "*.tf"
+      run: tofu fmt -check
+
+    - name: tofu-lint
+      tags: [lang]
+      glob: "*.tf"
+      run: tflint
+
+    - name: tofu-scan
+      tags: [lang]
+      glob: "*.tf"
+      run: trivy config --exit-code 1 --quiet .

@@ -5,3 +5,17 @@
 # GITHUB_TOKEN to this same scoped token and gh prefers it) — e.g. the
 # branch-protection bootstrap script.
 export GH_TOKEN=
+
+# OpenTofu state backend (ADR-0002). R2 API token: Cloudflare dashboard →
+# R2 → Manage R2 API Tokens → Object Read & Write, scoped to the
+# tofu-state bucket. The access key ID is the token's ID (shown at
+# creation, or GET /user/tokens/verify); .envrc derives the S3 secret from
+# the token.
+export R2_STORAGE_TOKEN=
+export R2_ACCESS_KEY_ID=
+# Cloudflare account ID (the R2 endpoint hostname / dashboard URL).
+export R2_ACCOUNT_ID=
+# State encryption passphrase — generate once (openssl rand -hex 32) and
+# back it up in a password manager: without it the state is unreadable and
+# every resource must be re-imported (ADR-0002).
+export TF_STATE_PASSPHRASE=

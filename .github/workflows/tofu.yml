@@ -1,0 +1,57 @@
+name: Tofu
+
+# The OpenTofu tag slice: fmt, tflint, trivy on the lefthook `lang` jobs —
+# hand-written for this one-off repo (ADR-0002), mirroring lint.yml's shape.
+# lint.yml never touches these; disjoint tag ownership by design.
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
+    branches: ["main"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tofu-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tofu-lint:
+    name: tofu lint
+    runs-on: ubuntu-latest
+    # Same per-job draft gate as lint.yml/pr-guards.yml: quiet on WIP drafts,
+    # re-triggered for real at ready_for_review.
+    if: github.event.pull_request.draft == false
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+      - name: Install lefthook
+        run: npm install --global lefthook
+
+      - uses: extractions/setup-just@v3
+
+      # Pinned release binaries, no floating actions: trivy's Feb–Mar 2026
+      # supply-chain incident (hijacked trivy-action tags) is why these are
+      # version-pinned downloads rather than setup actions — see the source
+      # repo's ADR-0023. tenv then installs the OpenTofu version
+      # required_version pins (TENV_AUTO_INSTALL), same as direnv locally.
+      - name: Install tenv, tflint, trivy (pinned)
+        env:
+          TENV_VERSION: "4.14.8"
+          TFLINT_VERSION: "0.64.0"
+          TRIVY_VERSION: "0.72.0"
+        run: |
+          curl -fsSL "https://github.com/tofuutils/tenv/releases/download/v${TENV_VERSION}/tenv_v${TENV_VERSION}_Linux_x86_64.tar.gz" \
+            | sudo tar -xz -C /usr/local/bin tenv tofu
+          curl -fsSL -o /tmp/tflint.zip "https://github.com/terraform-linters/tflint/releases/download/v${TFLINT_VERSION}/tflint_linux_amd64.zip" \
+            && sudo unzip -q -o /tmp/tflint.zip -d /usr/local/bin
+          curl -fsSL "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" \
+            | sudo tar -xz -C /usr/local/bin trivy
+
+      - name: Run tofu lint/format/scan checks
+        run: just lint --tag lang --no-tty
+        env:
+          TENV_AUTO_INSTALL: "true"
