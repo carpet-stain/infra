@@ -41,7 +41,7 @@ jobs:
       - name: Install Node lint tools
         run: npm install --global lefthook markdownlint-cli2 prettier
 
-      - uses: extractions/setup-just@v3
+      - uses: extractions/setup-just@v4
 
       - name: Install actionlint and yamlfmt
         env:
