@@ -33,7 +33,7 @@ jobs:
       # unlabeled PR reports success (not skipped — a skipped required check sits
       # pending forever and blocks the merge). Only a labeled PR missing an ADR
       # fails, so the check is safe to require on every PR.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         if: contains(github.event.pull_request.labels.*.name, 'architecture')
         with:
           ref: ${{ github.event.pull_request.head.sha }}
