@@ -27,7 +27,7 @@ jobs:
     # as pr-guards.yml.
     if: github.event.pull_request.draft == false
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Portable toolchain, no Homebrew (#276): a bootstrapped repo has no
       # Homebrew tie, so install each linter its native way. markdownlint-cli2,
