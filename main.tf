@@ -97,9 +97,15 @@ resource "github_repository_ruleset" "this" {
     }
 
     required_status_checks {
-      # strict:false — rebase-merge already replays onto current main at
-      # merge time, so "branch up to date" would only force CI re-runs.
-      strict_required_status_checks_policy = false
+      # strict:true — rebase-merge replays onto current main regardless, so
+      # this buys nothing for code correctness, but tofu-plan.yml's
+      # SHA-keyed plan artifact (ADR-0003) does depend on it: without
+      # strict mode, a merge can replay onto a main that moved since the
+      # last push, landing a different SHA than the one last planned. That
+      # degrades safely (the apply workflow's escape hatch, #26, catches a
+      # missing artifact either way) but forcing a fresh plan up front is
+      # cheaper than reaching for the escape hatch after the fact.
+      strict_required_status_checks_policy = true
       do_not_enforce_on_create             = false
 
       required_check {
