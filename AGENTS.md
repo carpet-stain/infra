@@ -80,6 +80,13 @@ team convention, not a CI-enforced allow-list:
 Draft-at-handoff is the explicit exception: stay in draft only when a human must
 test something _before_ code review, and say so in the handoff.
 
+**Merging a PR whose tofu-apply fails with "no matching plan artifact":**
+expected, not broken — see ADR-0003's runbook. Either the PR's plan (a
+`tfplan-<sha>` artifact, `tofu-plan.yml`) aged past its retention window, or
+the merge landed a different SHA than the one last planned. Push a fresh
+commit to re-plan before merging, or run the `workflow_dispatch` "apply
+main" escape hatch (#26) after the fact — never revert the merge.
+
 ## Local tooling
 
 > Concrete realization of **git.md** (shift-left tooling) and **github.md**
@@ -113,6 +120,32 @@ test something _before_ code review, and say so in the handoff.
 - R2 backend credentials + `TF_STATE_PASSPHRASE` live in `.envrc.local`
   (gitignored), never committed. Losing the passphrase means re-importing, not
   recovering (ADR-0002).
+
+### CI secrets (`tofu-plan.yml`)
+
+> Concrete realization of ADR-0003's saved-plan-on-merge model for this repo.
+
+The plan-on-PR workflow (#24) needs its own read-only credential surface —
+no write- or Administration-scoped secret ever reaches it:
+
+| Secret                  | Purpose                                                                                                                                                                                                                 |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GH_TOKEN`              | The same routine scoped PAT from `.envrc.local` (Contents/PR/Actions read-write, not Administration) — the `github` provider's credential for reading live repo/label/ruleset state across every repo in `local.repos`. |
+| `TF_STATE_PASSPHRASE`   | Same value as `.envrc.local` — decrypts the R2-backed state (ADR-0002) to compute a diff.                                                                                                                               |
+| `R2_PLAN_ACCESS_KEY_ID` | Access key ID for a **new**, separate R2 API token scoped to **Object Read only** on the `tofu-state` bucket — not the human's own Read & Write token.                                                                  |
+| `R2_PLAN_STORAGE_TOKEN` | The read-only R2 token's raw value; the workflow derives the S3 secret from it the same way `.envrc` does (`sha256`).                                                                                                   |
+| `R2_ACCOUNT_ID`         | Same value as `.envrc.local` — builds the R2 S3 endpoint URL.                                                                                                                                                           |
+
+These can't be tofu-managed (a repo can't provision its own CI's first
+credentials via its own CI) — seed them once via the elevated session:
+
+```sh
+env -u GH_TOKEN -u GITHUB_TOKEN gh secret set GH_TOKEN
+env -u GH_TOKEN -u GITHUB_TOKEN gh secret set TF_STATE_PASSPHRASE
+env -u GH_TOKEN -u GITHUB_TOKEN gh secret set R2_PLAN_ACCESS_KEY_ID
+env -u GH_TOKEN -u GITHUB_TOKEN gh secret set R2_PLAN_STORAGE_TOKEN
+env -u GH_TOKEN -u GITHUB_TOKEN gh secret set R2_ACCOUNT_ID
+```
 
 ## Terraform / OpenTofu conventions
 
