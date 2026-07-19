@@ -24,6 +24,13 @@ verbatim.
   `github_repository_ruleset.this`); governance invariants that hold for every
   repo live here, not in per-repo data.
 - `versions.tf` — core + provider pins, R2 backend.
+- `app.tf` — GitHub App credential propagation (ADR-0004): the private key
+  and client ID, scoped to infra's own repo only (ADR-0005).
+- `variables.tf` — apply-time inputs fed via `TF_VAR_*`, never a literal in
+  a committed file (currently just the App's private key).
+- `.github/actions/mint-app-token/` — composite action minting scoped
+  App-installation tokens for CI (#32); `.github/workflows/tofu-plan.yml`
+  and `tofu-apply.yml` are the saved-plan-on-merge pipeline (ADR-0003).
 - `docs/adr/` — architecture decisions (`.adr-dir` points here).
 - `scripts/` — `new-adr.sh`, `check-envrc-local-example.sh`.
 - `justfile` / `lefthook*.yml` — base-owned composition root; a language overlay
@@ -109,14 +116,17 @@ main" escape hatch (#26) after the fact — never revert the merge.
 > (scoped PAT, explicit elevation) for this repo. See `.envrc.local.example`.
 
 - Routine work uses a **direnv-scoped fine-grained PAT** (Contents / Pull
-  requests / Actions / Issues read-write, plus **Secrets: Read-only**,
-  **not** Administration) via `.envrc.local` — never a full `gh auth login`
-  session. So an agent driving `gh` can't touch repo settings or branch
-  protection. Secrets: Read-only exists so `tofu plan` can refresh
-  `github_actions_secret` resources (app.tf) without elevating — GitHub
-  never returns a secret's actual value at any permission level, only its
-  name and timestamps, so this doesn't expose anything the value-write path
-  (Administration-adjacent, still elevated-only) doesn't already guard.
+  requests / Actions / Issues read-write, plus **Secrets: Read-only** and
+  **Variables: Read-only**, **not** Administration) via `.envrc.local` —
+  never a full `gh auth login` session. So an agent driving `gh` can't
+  touch repo settings or branch protection. Secrets/Variables: Read-only
+  exist so `tofu plan` can refresh `github_actions_secret`/
+  `github_actions_variable` resources (app.tf) without elevating — two
+  separate fine-grained permission categories from each other and from
+  Actions, each needed individually. GitHub never returns a secret's
+  actual value at any permission level (only name/timestamps), so this
+  doesn't expose anything the value-write path (Administration-adjacent,
+  still elevated-only) doesn't already guard.
 - Elevate explicitly only for the one action that needs admin:
   `env -u GH_TOKEN -u GITHUB_TOKEN gh ...` — both vars, since `.envrc` aliases
   `GITHUB_TOKEN` to the same scoped token, so dropping `GH_TOKEN` alone is a no-op.
@@ -162,6 +172,29 @@ env -u GH_TOKEN -u GITHUB_TOKEN gh secret set TF_STATE_PASSPHRASE
 env -u GH_TOKEN -u GITHUB_TOKEN gh secret set R2_PLAN_ACCESS_KEY_ID
 env -u GH_TOKEN -u GITHUB_TOKEN gh secret set R2_PLAN_STORAGE_TOKEN
 env -u GH_TOKEN -u GITHUB_TOKEN gh secret set R2_ACCOUNT_ID
+```
+
+### CI secrets (`tofu-apply.yml`)
+
+> Concrete realization of ADR-0003's saved-plan-on-merge model, apply half,
+> and ADR-0004's App-token delegation, for this repo.
+
+The apply-on-merge workflow (#25) writes state, so its R2 credential is
+Read & Write, unlike the plan job's deliberately read-only one — but the
+`github` provider's own write access comes from a per-job App-minted token
+(#32's `mint-app-token`), not a standing secret:
+
+| Secret                   | Purpose                                                                                                                                                   |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `R2_APPLY_ACCESS_KEY_ID` | Access key ID for the same Read & Write R2 API token already in `.envrc.local` — apply genuinely needs write, no further scoping down is meaningful here. |
+| `R2_APPLY_STORAGE_TOKEN` | That token's raw value; derives the S3 secret the same way `.envrc` does (`sha256`).                                                                      |
+
+`TF_STATE_PASSPHRASE` and `R2_ACCOUNT_ID` are shared with the plan job's
+secrets above, not duplicated. Seed the two new ones the same way:
+
+```sh
+env -u GH_TOKEN -u GITHUB_TOKEN gh secret set R2_APPLY_ACCESS_KEY_ID
+env -u GH_TOKEN -u GITHUB_TOKEN gh secret set R2_APPLY_STORAGE_TOKEN
 ```
 
 ## Terraform / OpenTofu conventions

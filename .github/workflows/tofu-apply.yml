@@ -1,0 +1,108 @@
+name: Tofu apply
+
+# The apply half of ADR-0003's saved-plan-on-merge model: on every push to
+# main, downloads the exact tfplan-<sha> artifact tofu-plan.yml produced
+# for that commit and applies it verbatim — never a fresh plan. Fully
+# automatic: PR review + merge is the checkpoint, not a second gate here.
+on:
+  push:
+    branches: ["main"]
+
+permissions:
+  contents: read
+  actions: read
+
+# Applies queue, they don't cancel — cancelling a half-applied tofu run
+# would leave state in an unknown position. Shared group name with the
+# workflow_dispatch escape hatch (#26): a manual dispatch queues behind a
+# concurrent merge-apply rather than racing it.
+concurrency:
+  group: tofu-apply-main
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    name: tofu apply
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # Read-only lookup, the default ephemeral token already covers it —
+      # no need for the elevated App token this early.
+      - name: Find this SHA's plan run
+        id: find-run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          run_id=$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/tofu-plan.yml/runs?head_sha=${GITHUB_SHA}&status=success" \
+            --jq '.workflow_runs[0].id // empty')
+          if [[ -z "$run_id" ]]; then
+            echo "::error::No successful tofu-plan.yml run found for ${GITHUB_SHA} — its plan artifact doesn't exist (retention expired, or the plan job never ran for this exact SHA). Not falling back to a fresh plan (ADR-0003) — use the workflow_dispatch escape hatch (#26) instead."
+            exit 1
+          fi
+          echo "run_id=$run_id" >>"$GITHUB_OUTPUT"
+
+      - name: Download the plan artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh run download "${{ steps.find-run.outputs.run_id }}" --name "tfplan-${GITHUB_SHA}" --dir .
+
+      - name: Install tenv (pinned)
+        env:
+          TENV_VERSION: "4.14.8"
+        run: |
+          curl -fsSL "https://github.com/tofuutils/tenv/releases/download/v${TENV_VERSION}/tenv_v${TENV_VERSION}_Linux_x86_64.tar.gz" \
+            | sudo tar -xz -C /usr/local/bin tenv tofu
+
+      # Scoped to exactly what main.tf's resources write: Administration
+      # (repo settings, rulesets) and Issues (labels) — nothing else, and
+      # only for the repos this apply actually touches.
+      - name: Mint elevated App token
+        id: app-token
+        uses: ./.github/actions/mint-app-token
+        with:
+          client-id: ${{ vars.GH_APP_CLIENT_ID }}
+          private-key: ${{ secrets.GH_APP_PRIVATE_KEY }}
+          repositories: dotfiles,infra,project-starter-template
+          permission-administration: write
+          permission-issues: write
+
+      # Mirrors .envrc's own derivation exactly (ADR-0002), same pattern
+      # tofu-plan.yml uses — plain bash string concatenation, never GitHub
+      # Actions `${{ }}` template interpolation inside a run: script. The
+      # R2 credential here is Read & Write (unlike tofu-plan.yml's
+      # deliberately read-only one) since apply has to write state.
+      - name: tofu init + apply
+        env:
+          TENV_AUTO_INSTALL: "true"
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+          TF_STATE_PASSPHRASE: ${{ secrets.TF_STATE_PASSPHRASE }}
+          R2_APPLY_STORAGE_TOKEN: ${{ secrets.R2_APPLY_STORAGE_TOKEN }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_APPLY_ACCESS_KEY_ID }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+        run: |
+          AWS_SECRET_ACCESS_KEY="$(printf '%s' "$R2_APPLY_STORAGE_TOKEN" | shasum -a 256 | cut -d' ' -f1)"
+          export AWS_SECRET_ACCESS_KEY
+          export AWS_ENDPOINT_URL_S3="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+          export TF_ENCRYPTION='
+          key_provider "pbkdf2" "state" {
+            passphrase = "'"$TF_STATE_PASSPHRASE"'"
+          }
+          method "aes_gcm" "state" {
+            keys = key_provider.pbkdf2.state
+          }
+          state {
+            method   = method.aes_gcm.state
+            enforced = true
+          }
+          plan {
+            method   = method.aes_gcm.state
+            enforced = true
+          }'
+          tofu init -input=false
+          # Applies the exact downloaded plan, not a fresh one — the whole
+          # point of the saved-plan-on-merge model (ADR-0003). Normal
+          # locking (no -lock=false, unlike the plan job): this writes
+          # state, and the R2 backend's use_lockfile locking is the safety
+          # net against a concurrent manual `just tofu-apply`.
+          tofu apply -input=false tfplan
