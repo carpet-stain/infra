@@ -109,9 +109,14 @@ main" escape hatch (#26) after the fact — never revert the merge.
 > (scoped PAT, explicit elevation) for this repo. See `.envrc.local.example`.
 
 - Routine work uses a **direnv-scoped fine-grained PAT** (Contents / Pull
-  requests / Actions read-write, **not** Administration) via `.envrc.local` —
-  never a full `gh auth login` session. So an agent driving `gh` can't touch repo
-  settings or branch protection.
+  requests / Actions / Issues read-write, plus **Secrets: Read-only**,
+  **not** Administration) via `.envrc.local` — never a full `gh auth login`
+  session. So an agent driving `gh` can't touch repo settings or branch
+  protection. Secrets: Read-only exists so `tofu plan` can refresh
+  `github_actions_secret` resources (app.tf) without elevating — GitHub
+  never returns a secret's actual value at any permission level, only its
+  name and timestamps, so this doesn't expose anything the value-write path
+  (Administration-adjacent, still elevated-only) doesn't already guard.
 - Elevate explicitly only for the one action that needs admin:
   `env -u GH_TOKEN -u GITHUB_TOKEN gh ...` — both vars, since `.envrc` aliases
   `GITHUB_TOKEN` to the same scoped token, so dropping `GH_TOKEN` alone is a no-op.
