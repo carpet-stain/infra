@@ -24,11 +24,17 @@ inputs:
     required: true
   permission-administration:
     description: >
-      Administration permission level for the minted token (e.g.
-      "write"). Leave unset for no Administration access — the only
-      permission category this action exposes today, since infra's
-      elevated CI work (#25/#26) is the only anticipated consumer; add
-      more permission-* passthroughs here if a future consumer needs them.
+      Administration permission level for the minted token (e.g. "write")
+      — repo settings and rulesets. Leave unset for no Administration
+      access.
+    required: false
+    default: ""
+  permission-issues:
+    description: >
+      Issues permission level for the minted token (e.g. "write") — labels
+      go through this category, not Administration. Leave unset for no
+      Issues access. Add more permission-* passthroughs here if a future
+      consumer needs a category neither of these two cover.
     required: false
     default: ""
 
@@ -48,3 +54,4 @@ runs:
         private-key: ${{ inputs.private-key }}
         repositories: ${{ inputs.repositories }}
         permission-administration: ${{ inputs.permission-administration }}
+        permission-issues: ${{ inputs.permission-issues }}
