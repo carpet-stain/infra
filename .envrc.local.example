@@ -1,9 +1,12 @@
 # Copy this file to .envrc.local and fill in your own token — a
-# fine-grained PAT with Contents/Pull requests/Actions read-write, NOT
-# Administration. Use `env -u GH_TOKEN -u GITHUB_TOKEN gh ...` for anything
-# that needs the full-admin session instead (both vars, since .envrc aliases
-# GITHUB_TOKEN to this same scoped token and gh prefers it) — e.g. the
-# branch-protection bootstrap script.
+# fine-grained PAT with Contents/Pull requests/Actions/Issues read-write
+# plus Secrets: Read-only (so tofu plan can refresh github_actions_secret
+# resources, app.tf, without elevating — GitHub never returns a secret's
+# actual value at any permission level), NOT Administration. Use
+# `env -u GH_TOKEN -u GITHUB_TOKEN gh ...` for anything that needs the
+# full-admin session instead (both vars, since .envrc aliases GITHUB_TOKEN
+# to this same scoped token and gh prefers it) — e.g. the branch-protection
+# bootstrap script.
 export GH_TOKEN=
 
 # OpenTofu state backend (ADR-0002). R2 API token: Cloudflare dashboard →
