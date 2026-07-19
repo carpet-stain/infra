@@ -120,6 +120,13 @@ main" escape hatch (#26) after the fact — never revert the merge.
 - R2 backend credentials + `TF_STATE_PASSPHRASE` live in `.envrc.local`
   (gitignored), never committed. Losing the passphrase means re-importing, not
   recovering (ADR-0002).
+- A GitHub App (ADR-0004, `app.tf`) is installed on every repo in
+  `local.repos` for future CI-side credential delegation. It **cannot**
+  create a brand-new repo on this personal (non-org) account — GitHub
+  rejects App installation tokens on the repo-creation endpoint for user
+  accounts (ADR-0004's Consequences). Adding a genuinely new repo to
+  `local.repos` always needs one human-run `just tofu-apply`; don't design
+  automation that assumes otherwise.
 
 ### CI secrets (`tofu-plan.yml`)
 
