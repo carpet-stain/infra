@@ -25,7 +25,12 @@ jobs:
           repositories: infra
           permission-administration: read
 
+      # Repo metadata reads don't need Administration at all, so that alone
+      # wouldn't prove permission-administration actually took effect.
+      # Rulesets are unambiguously an Administration-gated resource
+      # (branch protection settings) — a successful read here is the real
+      # proof the scoping mechanism works, not just that the token exists.
       - name: Confirm the minted token authenticates and carries Administration:read
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
-        run: gh api repos/carpet-stain/infra --jq '{full_name, permissions}'
+        run: gh api repos/carpet-stain/infra/rulesets --jq '[.[] | {id, name}]'
