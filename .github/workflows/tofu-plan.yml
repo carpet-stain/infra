@@ -1,0 +1,124 @@
+name: Tofu plan
+
+# The read-only half of ADR-0003's saved-plan-on-merge model: plans every PR
+# push, uploads the (already-encrypted, ADR-0002 TF_ENCRYPTION) plan file as
+# a SHA-keyed artifact for the merge-time apply workflow to consume later
+# (#25), and upserts a single PR comment with the rendered plan. Disjoint
+# from tofu.yml's fmt/tflint/trivy job — this one touches state, so it needs
+# its own, narrower credential surface (see AGENTS.md's Credentials
+# section for what these secrets are and how they're provisioned).
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
+    branches: ["main"]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: tofu-plan-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  plan:
+    name: tofu plan
+    runs-on: ubuntu-latest
+    # Same per-job draft gate as tofu.yml/pr-guards.yml: quiet on WIP drafts,
+    # re-triggered for real at ready_for_review.
+    if: github.event.pull_request.draft == false
+    # Read-only credentials only (#24's acceptance criterion) — no
+    # Administration-scoped or write-capable secret ever reaches this job.
+    env:
+      GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+      TF_STATE_PASSPHRASE: ${{ secrets.TF_STATE_PASSPHRASE }}
+      R2_PLAN_STORAGE_TOKEN: ${{ secrets.R2_PLAN_STORAGE_TOKEN }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.R2_PLAN_ACCESS_KEY_ID }}
+      R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install tenv (pinned)
+        env:
+          TENV_VERSION: "4.14.8"
+        run: |
+          curl -fsSL "https://github.com/tofuutils/tenv/releases/download/v${TENV_VERSION}/tenv_v${TENV_VERSION}_Linux_x86_64.tar.gz" \
+            | sudo tar -xz -C /usr/local/bin tenv tofu
+
+      # Mirrors .envrc's own derivation exactly (ADR-0002): the R2 S3 secret
+      # is sha256(storage token), the endpoint carries the account ID, and
+      # TF_ENCRYPTION is built from the shared passphrase via plain bash
+      # string concatenation — never GitHub Actions `${{ }}` template
+      # interpolation inside a run: script, which would risk the secret
+      # breaking out of its quoting if it ever contained shell metacharacters.
+      - name: tofu init + plan
+        env:
+          TENV_AUTO_INSTALL: "true"
+        run: |
+          AWS_SECRET_ACCESS_KEY="$(printf '%s' "$R2_PLAN_STORAGE_TOKEN" | shasum -a 256 | cut -d' ' -f1)"
+          export AWS_SECRET_ACCESS_KEY
+          export AWS_ENDPOINT_URL_S3="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+          export TF_ENCRYPTION='
+          key_provider "pbkdf2" "state" {
+            passphrase = "'"$TF_STATE_PASSPHRASE"'"
+          }
+          method "aes_gcm" "state" {
+            keys = key_provider.pbkdf2.state
+          }
+          state {
+            method   = method.aes_gcm.state
+            enforced = true
+          }
+          plan {
+            method   = method.aes_gcm.state
+            enforced = true
+          }'
+          tofu init -input=false
+          # -lock=false: this job's R2 credential is read-only by design
+          # (#24's acceptance criterion), so it can't acquire the S3
+          # backend's write-based lock at all — and doesn't need to, since a
+          # plan never writes state. Same reasoning HCP Terraform's own
+          # read-only "speculative plans" use to skip locking entirely.
+          tofu plan -out=tfplan -input=false -lock=false
+          # Rendered here, not in a later step: TF_ENCRYPTION only exists in
+          # this step's own shell process (each workflow step is a separate
+          # invocation), and the plan file needs it to decrypt.
+          tofu show -no-color tfplan > plan.txt
+
+      # 7 days, not ADR-0003's original 2: a tighter window meant an
+      # ordinary multi-day solo-review cycle alone could outlive the
+      # artifact before merge. Outliving it either way (or a merge SHA the
+      # plan job never ran for) isn't unsafe — the apply workflow's escape
+      # hatch (#26) covers a missing artifact by design — just friction
+      # worth reducing. See AGENTS.md's Branch & PR model for the
+      # stale-artifact runbook pointer.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tfplan-${{ github.sha }}
+          path: tfplan
+          retention-days: 7
+
+      - name: Upsert PR comment with the rendered plan
+        run: |
+          marker="<!-- tofu-plan -->"
+          body_file="$(mktemp)"
+          {
+            echo "$marker"
+            echo
+            echo "### \`tofu plan\` for \`${GITHUB_SHA}\`"
+            echo
+            echo '```'
+            cat plan.txt
+            echo '```'
+          } >"$body_file"
+
+          comment_id=$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" --paginate \
+            --jq ".[] | select(.body | startswith(\"$marker\")) | .id" | head -n1)
+
+          if [[ -n "$comment_id" ]]; then
+            gh api --method PATCH "repos/${GITHUB_REPOSITORY}/issues/comments/${comment_id}" -F body=@"$body_file"
+          else
+            gh api --method POST "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" -F body=@"$body_file"
+          fi
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
