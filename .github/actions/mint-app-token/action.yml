@@ -1,0 +1,50 @@
+name: Mint GitHub App token
+description: >
+  Mints a short-lived (1-hour), narrowly-scoped installation token from
+  this repo's own GitHub App (ADR-0004). Only infra's own CI workflows
+  call this — no other managed repo mints from this App (ADR-0005). Every
+  call site sets permission-* explicitly; create-github-app-token's
+  narrowing is opt-in, without it the token carries the App's entire
+  registered grant.
+
+inputs:
+  client-id:
+    description: >
+      The App's client ID (vars.GH_APP_CLIENT_ID, app.tf) — not secret,
+      but a composite action can't read the caller's vars/secrets context
+      implicitly, so the calling workflow passes it through explicitly.
+    required: true
+  private-key:
+    description: >
+      The App's private key (secrets.GH_APP_PRIVATE_KEY, app.tf) — same
+      pass-through requirement as client-id.
+    required: true
+  repositories:
+    description: Comma or newline-separated repos the token can access.
+    required: true
+  permission-administration:
+    description: >
+      Administration permission level for the minted token (e.g.
+      "write"). Leave unset for no Administration access — the only
+      permission category this action exposes today, since infra's
+      elevated CI work (#25/#26) is the only anticipated consumer; add
+      more permission-* passthroughs here if a future consumer needs them.
+    required: false
+    default: ""
+
+outputs:
+  token:
+    description: The minted, scoped installation token.
+    value: ${{ steps.mint.outputs.token }}
+
+runs:
+  using: composite
+  steps:
+    - name: Mint scoped token
+      id: mint
+      uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+      with:
+        client-id: ${{ inputs.client-id }}
+        private-key: ${{ inputs.private-key }}
+        repositories: ${{ inputs.repositories }}
+        permission-administration: ${{ inputs.permission-administration }}
