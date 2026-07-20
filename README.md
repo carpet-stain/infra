@@ -14,6 +14,10 @@ Tools come from Homebrew: `tenv` (installs the OpenTofu version
 and fill it (GitHub scoped token + R2 backend credentials + the state
 passphrase), then `direnv allow` and `lefthook install`.
 
+This assumes the account's R2 bucket, GitHub App, and CI secrets already
+exist. Setting all of that up from nothing — a fresh GitHub account, no
+state backend yet — is [`docs/BOOTSTRAP.md`](docs/BOOTSTRAP.md).
+
 ## Use
 
 ```sh

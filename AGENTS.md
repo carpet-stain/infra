@@ -131,17 +131,17 @@ defeats the lock's purpose.
 > (scoped PAT, explicit elevation) for this repo. See `.envrc.local.example`.
 
 - Routine work uses a **direnv-scoped fine-grained PAT** (Contents / Pull
-  requests / Actions / Issues read-write, plus **Secrets: Read-only** and
-  **Variables: Read-only**, **not** Administration) via `.envrc.local` —
-  never a full `gh auth login` session. So an agent driving `gh` can't
-  touch repo settings or branch protection. Secrets/Variables: Read-only
-  exist so `tofu plan` can refresh `github_actions_secret`/
-  `github_actions_variable` resources (app.tf) without elevating — two
-  separate fine-grained permission categories from each other and from
-  Actions, each needed individually. GitHub never returns a secret's
-  actual value at any permission level (only name/timestamps), so this
-  doesn't expose anything the value-write path (Administration-adjacent,
-  still elevated-only) doesn't already guard.
+  requests / Actions / Issues read-write, plus **Secrets: Read-only**,
+  **not** Administration) via `.envrc.local` — never a full `gh auth login`
+  session. So an agent driving `gh` can't touch repo settings or branch
+  protection. Secrets: Read-only exists so `tofu plan` can refresh the
+  `github_actions_secret` resource (app.tf) without elevating — a
+  separate fine-grained permission category from Actions, needed on its
+  own. GitHub never returns a secret's actual value at any permission
+  level (only name/timestamps), so this doesn't expose anything the
+  value-write path (Administration-adjacent, still elevated-only) doesn't
+  already guard. (Not Variables: Read-only — `github_actions_variable`
+  isn't tofu-managed at all, see below, so nothing needs it.)
 - Elevate explicitly only for the one action that needs admin:
   `env -u GH_TOKEN -u GITHUB_TOKEN gh ...` — both vars, since `.envrc` aliases
   `GITHUB_TOKEN` to the same scoped token, so dropping `GH_TOKEN` alone is a no-op.
