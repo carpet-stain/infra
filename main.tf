@@ -66,8 +66,9 @@ resource "github_issue_label" "this" {
 }
 
 # The `protect main` ruleset on every managed repo: rebase-merge only, no
-# deletion or force-push, required PR checks with strict:false. Requires
-# GitHub Pro on private repos — every repo in the map is public today.
+# deletion or force-push, required PR checks with strict:true (see the
+# required_status_checks block below for why). Requires GitHub Pro on
+# private repos — every repo in the map is public today.
 resource "github_repository_ruleset" "this" {
   for_each = local.repos
 

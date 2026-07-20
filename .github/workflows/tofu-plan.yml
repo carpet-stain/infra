@@ -2,11 +2,15 @@ name: Tofu plan
 
 # The read-only half of ADR-0003's saved-plan-on-merge model: plans every PR
 # push, uploads the (already-encrypted, ADR-0002 TF_ENCRYPTION) plan file as
-# a SHA-keyed artifact for the merge-time apply workflow to consume later
-# (#25), and upserts a single PR comment with the rendered plan. Disjoint
-# from tofu.yml's fmt/tflint/trivy job — this one touches state, so it needs
-# its own, narrower credential surface (see AGENTS.md's Credentials
-# section for what these secrets are and how they're provisioned).
+# a tree-hash-keyed artifact for the merge-time apply workflow to consume
+# later (#25), and upserts a single PR comment with the rendered plan.
+# Keyed by tree hash, not commit SHA (ADR-0007) — GitHub's rebase-merge
+# always rewrites the committer info when a PR lands, so the merge SHA
+# never equals the SHA this job ran for, even with an up-to-date branch;
+# the tree hash is what's actually invariant. Disjoint from tofu.yml's
+# fmt/tflint/trivy job — this one touches state, so it needs its own,
+# narrower credential surface (see AGENTS.md's Credentials section for
+# what these secrets are and how they're provisioned).
 on:
   pull_request:
     types: [opened, reopened, synchronize, ready_for_review]
@@ -52,6 +56,7 @@ jobs:
       # interpolation inside a run: script, which would risk the secret
       # breaking out of its quoting if it ever contained shell metacharacters.
       - name: tofu init + plan
+        id: plan
         env:
           TENV_AUTO_INSTALL: "true"
         run: |
@@ -84,28 +89,33 @@ jobs:
           # this step's own shell process (each workflow step is a separate
           # invocation), and the plan file needs it to decrypt.
           tofu show -no-color tfplan > plan.txt
+          # The artifact's real key (ADR-0007) — see the top-of-file
+          # comment for why tree hash, not commit SHA.
+          echo "tree_sha=$(git rev-parse 'HEAD^{tree}')" >>"$GITHUB_OUTPUT"
 
       # 7 days, not ADR-0003's original 2: a tighter window meant an
       # ordinary multi-day solo-review cycle alone could outlive the
-      # artifact before merge. Outliving it either way (or a merge SHA the
-      # plan job never ran for) isn't unsafe — the apply workflow's escape
-      # hatch (#26) covers a missing artifact by design — just friction
-      # worth reducing. See AGENTS.md's Branch & PR model for the
-      # stale-artifact runbook pointer.
+      # artifact before merge. Outliving it isn't unsafe either way — the
+      # apply workflow's escape hatch (#26) covers a missing artifact by
+      # design — just friction worth reducing. See AGENTS.md's Branch & PR
+      # model for the stale-artifact runbook pointer.
       - uses: actions/upload-artifact@v4
         with:
-          name: tfplan-${{ github.sha }}
+          name: tfplan-${{ steps.plan.outputs.tree_sha }}
           path: tfplan
           retention-days: 7
 
       - name: Upsert PR comment with the rendered plan
+        env:
+          TREE_SHA: ${{ steps.plan.outputs.tree_sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           marker="<!-- tofu-plan -->"
           body_file="$(mktemp)"
           {
             echo "$marker"
             echo
-            echo "### \`tofu plan\` for \`${GITHUB_SHA}\`"
+            echo "### \`tofu plan\` for \`${GITHUB_SHA}\` (tree \`${TREE_SHA}\`)"
             echo
             echo '```'
             cat plan.txt
@@ -120,5 +130,3 @@ jobs:
           else
             gh api --method POST "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" -F body=@"$body_file"
           fi
-        env:
-          PR_NUMBER: ${{ github.event.pull_request.number }}

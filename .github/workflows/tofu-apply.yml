@@ -1,9 +1,17 @@
 name: Tofu apply
 
 # The apply half of ADR-0003's saved-plan-on-merge model: on every push to
-# main, downloads the exact tfplan-<sha> artifact tofu-plan.yml produced
-# for that commit and applies it verbatim — never a fresh plan. Fully
-# automatic: PR review + merge is the checkpoint, not a second gate here.
+# main, downloads the exact tfplan-<tree-hash> artifact tofu-plan.yml
+# produced for this commit's content and applies it verbatim — never a
+# fresh plan. Fully automatic: PR review + merge is the checkpoint, not a
+# second gate here.
+#
+# Keyed by tree hash, not commit SHA (ADR-0007): GitHub's rebase-merge
+# always rewrites the committer info when a PR lands, so github.sha here
+# never equals the SHA tofu-plan.yml actually ran for, even with an
+# up-to-date branch — verified empirically, this made the lookup fail on
+# every single merge until fixed. The tree hash is what's actually
+# invariant, since it only reflects file content.
 on:
   push:
     branches: ["main"]
@@ -27,25 +35,27 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # Read-only lookup, the default ephemeral token already covers it —
+      # Find and download by tree hash, not by "the tofu-plan.yml run for
+      # this commit SHA" — that run never existed under this SHA, only
+      # under the PR's pre-merge one (see the top-of-file comment). The
+      # artifacts-list API returns each artifact's own producing run, so
+      # this needs no separate "find the run" step at all: look up the
+      # artifact directly by name, take its workflow_run.id, download from
+      # that. Read-only, the default ephemeral token already covers it —
       # no need for the elevated App token this early.
-      - name: Find this SHA's plan run
-        id: find-run
+      - name: Find and download this tree's plan artifact
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          run_id=$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/tofu-plan.yml/runs?head_sha=${GITHUB_SHA}&status=success" \
-            --jq '.workflow_runs[0].id // empty')
-          if [[ -z "$run_id" ]]; then
-            echo "::error::No successful tofu-plan.yml run found for ${GITHUB_SHA} — its plan artifact doesn't exist (retention expired, or the plan job never ran for this exact SHA). Not falling back to a fresh plan (ADR-0003) — use the workflow_dispatch escape hatch (#26) instead."
+          tree_sha=$(git rev-parse 'HEAD^{tree}')
+          artifact=$(gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts?name=tfplan-${tree_sha}&per_page=100" \
+            --jq '[.artifacts[] | select(.expired == false)] | sort_by(.created_at) | reverse | .[0] // empty')
+          if [[ -z "$artifact" ]]; then
+            echo "::error::No plan artifact found for tree ${tree_sha} (commit ${GITHUB_SHA}) — retention expired, or the plan job never ran for this content. Not falling back to a fresh plan (ADR-0003) — use the workflow_dispatch escape hatch (#26) instead."
             exit 1
           fi
-          echo "run_id=$run_id" >>"$GITHUB_OUTPUT"
-
-      - name: Download the plan artifact
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh run download "${{ steps.find-run.outputs.run_id }}" --name "tfplan-${GITHUB_SHA}" --dir .
+          run_id=$(echo "$artifact" | jq -r '.workflow_run.id')
+          gh run download "$run_id" --name "tfplan-${tree_sha}" --dir .
 
       - name: Install tenv (pinned)
         env:
