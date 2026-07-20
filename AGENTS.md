@@ -91,8 +91,15 @@ test something _before_ code review, and say so in the handoff.
 expected, not broken — see ADR-0003's runbook. Either the PR's plan (a
 `tfplan-<sha>` artifact, `tofu-plan.yml`) aged past its retention window, or
 the merge landed a different SHA than the one last planned. Push a fresh
-commit to re-plan before merging, or run the `workflow_dispatch` "apply
-main" escape hatch (#26) after the fact — never revert the merge.
+commit to re-plan before merging, or run `tofu-apply-dispatch.yml` ("Tofu
+apply (manual)" in the Actions tab — a fresh plan+apply pair against
+current `main`, no saved artifact needed) after the fact — never revert
+the merge.
+
+**A crashed apply leaving a stale R2 lockfile**: cleared by hand with
+`tofu force-unlock <id>` (the id is in the error message) under the
+elevated session — deliberately not automated, since an automated unlock
+defeats the lock's purpose.
 
 ## Local tooling
 

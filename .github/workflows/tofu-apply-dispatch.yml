@@ -1,0 +1,80 @@
+name: Tofu apply (manual)
+
+# The workflow_dispatch escape hatch ADR-0003's "Failure/retry runbook"
+# calls for: a fresh tofu plan + apply pair run directly against main, for
+# retrying an apply with no new code change, or recovering when
+# tofu-apply.yml hard-fails because no matching plan artifact exists.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Same group name as tofu-apply.yml's merge-triggered apply — a manual
+# dispatch queues behind a concurrent merge-apply rather than racing it.
+concurrency:
+  group: tofu-apply-main
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    name: tofu apply (fresh plan)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install tenv (pinned)
+        env:
+          TENV_VERSION: "4.14.8"
+        run: |
+          curl -fsSL "https://github.com/tofuutils/tenv/releases/download/v${TENV_VERSION}/tenv_v${TENV_VERSION}_Linux_x86_64.tar.gz" \
+            | sudo tar -xz -C /usr/local/bin tenv tofu
+
+      # Same scope as tofu-apply.yml's merge-triggered job: Administration
+      # (repo settings, rulesets) and Issues (labels) — nothing else.
+      - name: Mint elevated App token
+        id: app-token
+        uses: ./.github/actions/mint-app-token
+        with:
+          client-id: ${{ vars.GH_APP_CLIENT_ID }}
+          private-key: ${{ secrets.GH_APP_PRIVATE_KEY }}
+          repositories: dotfiles,infra,project-starter-template
+          permission-administration: write
+          permission-issues: write
+
+      # Same TF_ENCRYPTION/backend setup as tofu-apply.yml's merge-triggered
+      # job (mirrors .envrc, plain bash string concatenation, never GitHub
+      # Actions `${{ }}` interpolation inside a run: script) — the one
+      # difference is plan+apply run back to back here instead of applying
+      # a downloaded artifact, since this path exists precisely for when no
+      # matching saved plan is available.
+      - name: tofu init + plan + apply
+        env:
+          TENV_AUTO_INSTALL: "true"
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+          TF_STATE_PASSPHRASE: ${{ secrets.TF_STATE_PASSPHRASE }}
+          R2_APPLY_STORAGE_TOKEN: ${{ secrets.R2_APPLY_STORAGE_TOKEN }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_APPLY_ACCESS_KEY_ID }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+        run: |
+          AWS_SECRET_ACCESS_KEY="$(printf '%s' "$R2_APPLY_STORAGE_TOKEN" | shasum -a 256 | cut -d' ' -f1)"
+          export AWS_SECRET_ACCESS_KEY
+          export AWS_ENDPOINT_URL_S3="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+          export TF_ENCRYPTION='
+          key_provider "pbkdf2" "state" {
+            passphrase = "'"$TF_STATE_PASSPHRASE"'"
+          }
+          method "aes_gcm" "state" {
+            keys = key_provider.pbkdf2.state
+          }
+          state {
+            method   = method.aes_gcm.state
+            enforced = true
+          }
+          plan {
+            method   = method.aes_gcm.state
+            enforced = true
+          }'
+          tofu init -input=false
+          tofu plan -out=tfplan -input=false
+          tofu apply -input=false tfplan
