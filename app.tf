@@ -12,22 +12,39 @@
 # one-time-manual precedent as registration itself. See #30.
 
 # The App's private key (#29) — this account's single highest-value
-# credential (ADR-0004) — propagated to infra's own Actions secrets only,
-# never to any other managed repo (ADR-0005). Already imported (its
-# temporary `import` block did its job and is spent, same as any other
-# adopt-then-delete import per README.md's convention) rather than created,
-# so tofu never sent a value over the wire — GitHub's API can't return the
-# live value for tofu to diff against anyway, and `ignore_changes` means a
-# routine/CI plan (which never holds the real key, var default "") can
-# never compute a "set to empty" diff against what's already live. Rotating
-# the key means removing the ignore_changes line for one deliberate apply.
-resource "github_actions_secret" "app_private_key" {
-  repository  = github_repository.this["infra"].name
-  secret_name = "GH_APP_PRIVATE_KEY"
-  value       = var.github_app_private_key
+# credential (ADR-0004/0005) — now lives in Bitwarden's `infra` Project
+# (ADR-0008), migrated off the native GitHub Actions secret #31 first put
+# it in (#47) so every secret this account holds has one source of truth.
+# Dynamic secret: no `value` in config. The real key is set by hand in
+# Bitwarden's UI during the one-time bootstrap and adopted with a temporary
+# `import` block (README's adopt-then-delete convention) — so tofu never
+# holds or sends the key, and the provider's dynamic-secrets tracking picks
+# up the UI value with no config diff. The value still lands in state, but
+# state is already R2-backed and client-side encrypted under ADR-0002's
+# enforced TF_ENCRYPTION, so no new encryption step (ADR-0008). infra's CI
+# reads it via bitwarden/sm-action at mint time (tofu-apply.yml,
+# vend-token.yml), never from a native secret.
+resource "bitwarden-secrets_secret" "app_private_key" {
+  key        = "GH_APP_PRIVATE_KEY"
+  project_id = var.bws_infra_project_id
+  note       = "GitHub App RSA private key (#29, ADR-0008). Rotate by setting the new value in the Bitwarden UI — dynamic-secrets tracking imports it, no apply needed."
+}
+
+# Drop the native GitHub Actions secret #31 created from tofu's state — #47
+# supersedes its mechanism, and leaving it managed would be a second source
+# of truth for the key alongside Bitwarden. `destroy = false` (same as the
+# client-id removal below): tofu forgets it without an API call, and the
+# native secret is deleted by hand during the migration
+# (`gh secret delete GH_APP_PRIVATE_KEY`, AGENTS.md's runbook) — so the CI
+# apply token never needs Secrets: write for a one-time destruction. Bootstrap
+# sequencing matters: the key must already be in Bitwarden and the mint path
+# switched to sm-action (tofu-apply.yml) before the native secret is deleted,
+# or CI apply loses its key mid-transition.
+removed {
+  from = github_actions_secret.app_private_key
 
   lifecycle {
-    ignore_changes = [value]
+    destroy = false
   }
 }
 

@@ -33,10 +33,10 @@ Both are described in full in AGENTS.md's Credentials section — this is
 just the bootstrap-time checklist for creating them the first time.
 
 - **Routine PAT** (fine-grained, github.com/settings/personal-access-tokens):
-  Contents / Pull requests / Actions / Issues read-write, plus
-  **Secrets: Read-only**, **not** Administration. Grant this now even
-  though nothing needs Secrets yet — step 5 below will. Put the value in
-  `.envrc.local`'s `GH_TOKEN`.
+  Contents / Pull requests / Actions / Issues read-write, **not**
+  Administration. (No Secrets/Variables scope — the App key lives in
+  Bitwarden, not a `github_actions_secret`, so no plan refresh needs it;
+  ADR-0008.) Put the value in `.envrc.local`'s `GH_TOKEN`.
 - **Elevated session**: `gh auth login` with the full default scopes (or a
   classic PAT with `repo` + `delete_repo`), used only via
   `env -u GH_TOKEN -u GITHUB_TOKEN gh ...` / `just tofu-apply`. This is
@@ -70,15 +70,15 @@ adding one later means every existing installation has to separately
 accept the update — a second manual step this bootstrap skips entirely
 by front-loading it.
 
-Repository permissions, all set to **write** except where noted:
+Repository permissions, all set to **write**:
 
 - Issues, Pull requests, Contents, Actions, Administration
-- **Secrets: Read-only** (not write — a fresh `tofu plan` needs to refresh
-  `github_actions_secret`, nothing here ever writes one)
 
-Leave Variables alone — don't grant it. `github_actions_variable` is
-deliberately not tofu-managed at all (step 6 explains why), so the App
-never needs to touch it.
+Leave Secrets and Variables alone — don't grant either. The App key lives in
+Bitwarden now (ADR-0008), so no minted token ever refreshes a
+`github_actions_secret`, and `github_actions_variable` is deliberately not
+tofu-managed at all (step 6 explains why) — the App never needs to touch
+either category.
 
 Uncheck **Active** under Webhooks (nothing here is event-driven), and set
 **Where can this GitHub App be installed?** to **Only on this account**.
@@ -95,49 +95,82 @@ why Client ID over App ID), and the **private key** (`.pem`, shown once).
   API rejects fine-grained PATs and App tokens outright (confirmed against
   GitHub's own docs and a live 403; see `app.tf`'s top comment). A future
   new repo needs this same manual step, every time.
-- **Seed the private key** as this repo's own Actions secret:
-  `env -u GH_TOKEN -u GITHUB_TOKEN gh secret set GH_APP_PRIVATE_KEY` under
-  the elevated session, pasting the `.pem` contents. Then delete the local
-  file (or keep one copy in a password manager if you might need to
-  re-seed later).
 - **Set the client ID** as a plain repo variable — also manual, also
   permanent: `gh variable set GH_APP_CLIENT_ID --body <client id>`.
   `actions/create-github-app-token` has no permission input that could
   ever let a minted token refresh a `github_actions_variable` resource
   (confirmed against a live 422 and the tool's own open issue #231), so
   there's no path to making this tofu-managed today.
-- **Bring the key under tofu** (existence only, never its value): add
-  `app.tf`'s `github_actions_secret.app_private_key` resource with an
-  `import` block pointed at `infra:GH_APP_PRIVATE_KEY` and
-  `lifecycle { ignore_changes = [value] }`, then `just tofu-apply` once to
-  adopt it. After that apply, delete the now-spent `import` block (same
-  convention as any other adopt-then-delete import in this repo).
 
-## 6. Seed the remaining CI secrets
+Keep the `.pem` in a password manager for now — step 6 puts it in Bitwarden,
+not a native GitHub secret.
 
-Five more, all under the elevated session — AGENTS.md's two "CI secrets"
-tables have the full purpose of each:
+## 6. Set up Bitwarden Secrets Manager
+
+Secrets live in Bitwarden Secrets Manager (ADR-0008), whose scaffolding has
+no Terraform resource — this is the one-time manual part. Do it in Bitwarden's
+web UI unless noted; AGENTS.md's grant table is the spec to match and to audit
+against later.
+
+- **Enable Secrets Manager** on a free Organization under the existing paid
+  personal account (it can't host SM directly — ADR-0008).
+- **Create two Projects:** `infra` and `vended-tokens`.
+- **Create three Machine Accounts** and set each one's Project grants
+  **exactly** as AGENTS.md's grant table shows. These grants are the security
+  boundary; the free tier caps at three, so there's no headroom. Capture each
+  account's access token.
+- **In `infra`, create the secrets** and note each UUID: `GH_APP_PRIVATE_KEY`
+  (paste the `.pem` from step 4), and `CLOUDFLARE_API_TOKEN` (leave empty
+  until #7 issues it).
+- **In `vended-tokens`, create one secret** (e.g. `LOCAL_GH_TOKEN`) with a
+  throwaway placeholder value — `vend-token.yml` overwrites it each run. Note
+  its UUID.
+- **Put the CI account's credentials in `.envrc.local`:** `BW_ACCESS_TOKEN`
+  (the CI account's token), `BW_ORGANIZATION_ID` (the Org UUID), and
+  `TF_VAR_bws_infra_project_id` (the `infra` Project UUID).
+- **Adopt the two `infra` secrets into tofu** (existence, never value): add a
+  temporary `import` block for each (`bitwarden-secrets_secret.app_private_key`
+  and `.cloudflare_api_token`, id = the UUID), `just tofu-apply` once, then
+  delete the spent `import` blocks (the repo's adopt-then-delete convention).
+  The values are dynamic — set in Bitwarden's UI, never in config.
+
+## 7. Seed the remaining CI secrets
+
+All under the elevated session — AGENTS.md's three "CI secrets" tables have
+the full purpose of each:
 
 ```sh
-env -u GH_TOKEN -u GITHUB_TOKEN gh secret set GH_TOKEN               # copy of the routine PAT
-env -u GH_TOKEN -u GITHUB_TOKEN gh secret set TF_STATE_PASSPHRASE     # same value as .envrc.local
-env -u GH_TOKEN -u GITHUB_TOKEN gh secret set R2_ACCOUNT_ID           # same value as .envrc.local
-env -u GH_TOKEN -u GITHUB_TOKEN gh secret set R2_PLAN_ACCESS_KEY_ID   # NEW token, Object Read only
-env -u GH_TOKEN -u GITHUB_TOKEN gh secret set R2_PLAN_STORAGE_TOKEN   # same NEW read-only token
-env -u GH_TOKEN -u GITHUB_TOKEN gh secret set R2_APPLY_ACCESS_KEY_ID  # copy of .envrc.local's R2 token
-env -u GH_TOKEN -u GITHUB_TOKEN gh secret set R2_APPLY_STORAGE_TOKEN  # copy of .envrc.local's R2 token
+env -u GH_TOKEN -u GITHUB_TOKEN gh secret set GH_TOKEN                   # copy of the routine PAT
+env -u GH_TOKEN -u GITHUB_TOKEN gh secret set TF_STATE_PASSPHRASE         # same value as .envrc.local
+env -u GH_TOKEN -u GITHUB_TOKEN gh secret set R2_ACCOUNT_ID               # same value as .envrc.local
+env -u GH_TOKEN -u GITHUB_TOKEN gh secret set R2_PLAN_ACCESS_KEY_ID       # NEW token, Object Read only
+env -u GH_TOKEN -u GITHUB_TOKEN gh secret set R2_PLAN_STORAGE_TOKEN       # same NEW read-only token
+env -u GH_TOKEN -u GITHUB_TOKEN gh secret set R2_APPLY_ACCESS_KEY_ID      # copy of .envrc.local's R2 token
+env -u GH_TOKEN -u GITHUB_TOKEN gh secret set R2_APPLY_STORAGE_TOKEN      # copy of .envrc.local's R2 token
+env -u GH_TOKEN -u GITHUB_TOKEN gh secret set BWS_ACCESS_TOKEN            # CI machine account token (step 6)
+env -u GH_TOKEN -u GITHUB_TOKEN gh secret set BWS_ORGANIZATION_ID         # Bitwarden Org UUID
+env -u GH_TOKEN -u GITHUB_TOKEN gh secret set BWS_VENDING_ACCESS_TOKEN    # Vending machine account token
+env -u GH_TOKEN -u GITHUB_TOKEN gh variable set BWS_INFRA_PROJECT_ID      # infra Project UUID
+env -u GH_TOKEN -u GITHUB_TOKEN gh variable set BWS_APP_KEY_SECRET_ID     # GH_APP_PRIVATE_KEY secret UUID
+env -u GH_TOKEN -u GITHUB_TOKEN gh variable set BWS_VENDED_SECRET_ID      # vended-tokens secret UUID
 ```
 
-The plan job's R2 token is the only genuinely new credential here — mint
-it separately, scoped to Object Read only, rather than reusing the
-Read & Write one. Everything else is a value you already have.
+The plan job's R2 read-only token and the three Bitwarden machine-account
+tokens are the genuinely new credentials here; the rest are values you
+already have. The three `BWS_*` UUIDs are variables, not secrets — they
+identify a Project or secret, they don't grant anything on their own.
 
-## 7. Bring in the CI workflows
+## 8. Bring in the CI workflows
 
-Add `.github/actions/mint-app-token/` and the three
-`.github/workflows/tofu-*.yml` files. Open a PR touching only these files,
-confirm `tofu plan` posts a comment showing no unexpected drift, merge,
-and confirm `tofu-apply.yml` completes automatically. From here on,
+Add `.github/actions/mint-app-token/` and the `.github/workflows/tofu-*.yml`
+files. Open a PR touching only these, confirm `tofu plan` posts a comment
+showing no unexpected drift, merge, and confirm `tofu-apply.yml` completes
+automatically.
+
+Then add `.github/workflows/vend-token.yml` and trigger it once via
+`workflow_dispatch` — confirm it publishes a fresh `{token, expires_at}` to
+the `vended-tokens` secret and that the minted token never appears unmasked in
+the run log. Local shells (`dotfiles`#377) read from there. From here on,
 AGENTS.md's Branch & PR model and Credentials sections are the operating
 manual, not this doc.
 
@@ -155,6 +188,10 @@ tooling gaps:
   refresh a `github_actions_variable` resource).
 - Every CI secret's first seeding, and any App-manifest permission
   change plus its separate per-installation approval step.
+- The entire Bitwarden scaffolding — Organization, Projects, Machine
+  Accounts, and their Project grants (the provider only manages `secret`).
+  The grants are the security boundary; audit the live state against
+  AGENTS.md's grant table, since nothing enforces it.
 
 See AGENTS.md's Credentials section for the day-to-day version of this
 list, and ADR-0004/ADR-0005 for the full reasoning behind the model.

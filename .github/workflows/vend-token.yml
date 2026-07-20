@@ -1,0 +1,105 @@
+name: Vend scoped token
+
+# Publishes a narrowly-scoped, rotating GitHub token into Bitwarden's
+# `vended-tokens` Project so a local/agent shell can read a working
+# credential without ever touching the App's raw private key (#51, ADR-0008).
+# The one piece of automation that touches both Projects, unattended — so it
+# runs hardened: SHA-pinned actions, an empty GITHUB_TOKEN, a masked minted
+# token, and a machine account (Vending) whose grants are read on `infra`,
+# read/write on `vended-tokens`, and nothing else.
+on:
+  schedule:
+    # Every 20 minutes → 72 runs/day. The minted token lives 1 hour, so the
+    # freshest published token is never older than ~20 min and always has
+    # ≥40 min of life left. GitHub's own docs call scheduled runs best-effort
+    # and delayable under load; even a 20-minute delay still lands a fresh
+    # token well inside the previous one's hour — the real buffer #51's
+    # acceptance asks for, not the thin 15 min a 45-minute cadence would
+    # leave. Public-repo Actions minutes are unmetered, so 72/day is free
+    # (a load-bearing "infra stays public" assumption, ADR-0008).
+    - cron: "*/20 * * * *"
+  # Manual trigger for the masked-token dry run #51's acceptance calls for,
+  # and for re-vending immediately after the 60-day inactivity auto-disable
+  # (ADR-0008) is cleared.
+  workflow_dispatch:
+
+# Only the newest vend matters — a queued run superseding an in-flight one
+# just publishes a fresher token. Distinct from the tofu-apply group.
+concurrency:
+  group: vend-token
+  cancel-in-progress: true
+
+jobs:
+  vend:
+    name: mint and publish
+    runs-on: ubuntu-latest
+    # Zero GITHUB_TOKEN repo permissions: this job authenticates entirely via
+    # the App key (from Bitwarden) and the Vending machine account — it never
+    # touches the repo through GITHUB_TOKEN. checkout still works because
+    # infra is public (clones anonymously), the same public assumption the
+    # cadence above already leans on.
+    permissions: {}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Read the App's private key from the `infra` Project via the Vending
+      # machine account (read on `infra`). set_env: false keeps it a step
+      # output rather than a job-wide env var; sm-action masks it regardless.
+      - name: Read App private key from Bitwarden
+        id: bw-key
+        uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793 # v3.0.1
+        with:
+          access_token: ${{ secrets.BWS_VENDING_ACCESS_TOKEN }}
+          set_env: false
+          secrets: |
+            ${{ vars.BWS_APP_KEY_SECRET_ID }} > GH_APP_PRIVATE_KEY
+
+      # The vended token, scoped deliberately: {contents, issues,
+      # pull_requests}: write and NO administration (create-github-app-token
+      # DOES expose permission-administration — omitting it is the point, not
+      # an accident). repositories is every entry in local.repos EXCEPT infra
+      # itself: a vended token that could write infra could push a crafted
+      # file and open a PR against the one repo holding the raw key and
+      # running this mint (#51/ADR-0008). Keep this list in sync with
+      # local.repos-minus-infra (repos.tf); tofu-apply.yml hardcodes the full
+      # list the same way.
+      - name: Mint scoped token
+        id: app-token
+        uses: ./.github/actions/mint-app-token
+        with:
+          client-id: ${{ vars.GH_APP_CLIENT_ID }}
+          private-key: ${{ steps.bw-key.outputs.GH_APP_PRIVATE_KEY }}
+          repositories: dotfiles,project-starter-template
+          permission-contents: write
+          permission-issues: write
+          permission-pull-requests: write
+
+      - name: Install bws (pinned)
+        env:
+          # Pinned release binary, no floating install — same supply-chain
+          # discipline the tofu workflows apply to tenv/tflint/trivy
+          # (ADR-0023 in the source repo). Bump deliberately in its own diff.
+          BWS_VERSION: "2.1.0"
+        run: |
+          curl -fsSL -o /tmp/bws.zip "https://github.com/bitwarden/sdk-sm/releases/download/bws-v${BWS_VERSION}/bws-x86_64-unknown-linux-gnu-${BWS_VERSION}.zip"
+          sudo unzip -q -o /tmp/bws.zip -d /usr/local/bin bws
+
+      # Publish {token, expires_at} as a single JSON secret in vended-tokens.
+      # The minted token and its expiry reach the script only via env, never
+      # `${{ }}` interpolation inside the run: body (the secret-quoting
+      # discipline the tofu workflows use). add-mask is belt-and-suspenders
+      # over create-github-app-token's own masking; the bws write is silenced
+      # so its JSON echo (which includes the value) can't surface the token.
+      - name: Publish token to vended-tokens
+        env:
+          BWS_ACCESS_TOKEN: ${{ secrets.BWS_VENDING_ACCESS_TOKEN }}
+          APP_TOKEN: ${{ steps.app-token.outputs.token }}
+          VENDED_SECRET_ID: ${{ vars.BWS_VENDED_SECRET_ID }}
+        run: |
+          echo "::add-mask::$APP_TOKEN"
+          # create-github-app-token issues a 1-hour token; record the expiry
+          # so the consumer (dotfiles#377) can refresh before it lapses.
+          expires_at="$(date -u -d '+1 hour' +%Y-%m-%dT%H:%M:%SZ)"
+          value="$(jq -cn --arg t "$APP_TOKEN" --arg e "$expires_at" '{token: $t, expires_at: $e}')"
+          bws secret edit "$VENDED_SECRET_ID" --value "$value" >/dev/null
+          echo "Published a fresh token, expires ${expires_at}."

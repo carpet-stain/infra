@@ -16,8 +16,10 @@ inputs:
     required: true
   private-key:
     description: >
-      The App's private key (secrets.GH_APP_PRIVATE_KEY, app.tf) — same
-      pass-through requirement as client-id.
+      The App's private key — now read from Bitwarden's `infra` Project via
+      bitwarden/sm-action (app.tf, ADR-0008), no longer a native secret.
+      Same pass-through requirement as client-id: the caller reads it and
+      passes it in explicitly.
     required: true
   repositories:
     description: Comma or newline-separated repos the token can access.
@@ -29,11 +31,23 @@ inputs:
       access.
     required: false
     default: ""
+  permission-contents:
+    description: >
+      Contents permission level for the minted token (e.g. "write") — repo
+      file contents and commits. Leave unset for no Contents access.
+    required: false
+    default: ""
   permission-issues:
     description: >
       Issues permission level for the minted token (e.g. "write") — labels
       go through this category, not Administration. Leave unset for no
       Issues access.
+    required: false
+    default: ""
+  permission-pull-requests:
+    description: >
+      Pull requests permission level for the minted token (e.g. "write").
+      Leave unset for no Pull requests access.
     required: false
     default: ""
   permission-secrets:
@@ -67,5 +81,7 @@ runs:
         private-key: ${{ inputs.private-key }}
         repositories: ${{ inputs.repositories }}
         permission-administration: ${{ inputs.permission-administration }}
+        permission-contents: ${{ inputs.permission-contents }}
         permission-issues: ${{ inputs.permission-issues }}
+        permission-pull-requests: ${{ inputs.permission-pull-requests }}
         permission-secrets: ${{ inputs.permission-secrets }}

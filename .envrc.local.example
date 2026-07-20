@@ -1,8 +1,8 @@
 # Copy this file to .envrc.local and fill in your own token — a
-# fine-grained PAT with Contents/Pull requests/Actions/Issues read-write
-# plus Secrets: Read-only (so tofu plan can refresh github_actions_secret
-# resources, app.tf, without elevating — GitHub never returns a secret's
-# actual value at any permission level), NOT Administration. Use
+# fine-grained PAT with Contents/Pull requests/Actions/Issues read-write,
+# NOT Administration. (Secrets/Variables: Read-only is no longer needed:
+# the App key moved to Bitwarden, #47/ADR-0008, so no github_actions_secret
+# or _variable resource is left for a plan to refresh.) Use
 # `env -u GH_TOKEN -u GITHUB_TOKEN gh ...` for anything that needs the
 # full-admin session instead (both vars, since .envrc aliases GITHUB_TOKEN
 # to this same scoped token and gh prefers it) — e.g. the branch-protection
@@ -22,3 +22,14 @@ export R2_ACCOUNT_ID=
 # back it up in a password manager: without it the state is unreadable and
 # every resource must be re-imported (ADR-0002).
 export TF_STATE_PASSPHRASE=
+
+# Bitwarden Secrets Manager (ADR-0008) — a local `tofu plan`/`apply` now
+# reads the App-key and Cloudflare-token secrets, so the provider needs
+# auth. BW_ACCESS_TOKEN is the `infra` CI machine account's access token
+# (read/write on the `infra` Project — the same account CI uses); the org
+# UUID and the `infra` Project UUID come from Bitwarden's UI. NOTE the
+# prefix: the provider reads BW_*; the `bws` CLI reads BWS_* — the vend
+# workflow's separate Vending account token is never needed locally.
+export BW_ACCESS_TOKEN=
+export BW_ORGANIZATION_ID=
+export TF_VAR_bws_infra_project_id=

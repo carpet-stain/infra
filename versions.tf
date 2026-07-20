@@ -13,6 +13,10 @@ terraform {
       source  = "integrations/github"
       version = "~> 6.13"
     }
+    bitwarden-secrets = {
+      source  = "bitwarden/bitwarden-secrets"
+      version = "~> 1.0"
+    }
   }
 
   backend "s3" {
@@ -34,3 +38,13 @@ terraform {
 provider "github" {
   owner = "carpet-stain"
 }
+
+# Bitwarden Secrets Manager, the account's secret store (ADR-0008). Auth is
+# entirely environment-sourced — the machine account's token via
+# BW_ACCESS_TOKEN and the org UUID via BW_ORGANIZATION_ID (both Sensitive,
+# both from .envrc.local, same never-a-literal-in-source discipline ADR-0002
+# applies to R2 credentials) — so this block stays empty. NOTE the prefix:
+# the provider reads BW_*; the `bws` CLI the vend workflow uses for writes
+# reads BWS_* — different tokens for different machine accounts, don't cross
+# them.
+provider "bitwarden-secrets" {}
