@@ -42,16 +42,12 @@ inputs:
       fresh `tofu plan` refreshes every resource including
       github_actions_secret, which needs this even just to confirm the
       resource still exists. Only a saved-plan `tofu apply` (no refresh)
-      can skip it. Leave unset for no Secrets access.
-    required: false
-    default: ""
-  permission-variables:
-    description: >
-      Variables permission level for the minted token (e.g. "read") —
-      same refresh requirement as permission-secrets, for
-      github_actions_variable. Leave unset for no Variables access. Add
-      more permission-* passthroughs here if a future consumer needs a
-      category none of these four cover.
+      can skip it. Leave unset for no Secrets access. Add more
+      permission-* passthroughs here if a future consumer needs a category
+      none of these three cover — but not `permission-variables`:
+      actions/create-github-app-token has no such input at all
+      (actions/create-github-app-token#231, open upstream), which is why
+      `github_actions_variable` resources aren't tofu-managed here (app.tf).
     required: false
     default: ""
 
@@ -73,4 +69,3 @@ runs:
         permission-administration: ${{ inputs.permission-administration }}
         permission-issues: ${{ inputs.permission-issues }}
         permission-secrets: ${{ inputs.permission-secrets }}
-        permission-variables: ${{ inputs.permission-variables }}

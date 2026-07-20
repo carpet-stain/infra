@@ -31,12 +31,13 @@ jobs:
             | sudo tar -xz -C /usr/local/bin tenv tofu
 
       # Administration/Issues match tofu-apply.yml's merge-triggered job.
-      # Secrets/Variables are extra here specifically: this job runs a
-      # fresh `tofu plan`, which refreshes every resource including
-      # github_actions_secret/github_actions_variable — tofu-apply.yml
-      # skips that by applying a saved plan instead, so it doesn't need
-      # these two. Read-only: this job never writes either resource
-      # (both use ignore_changes/are otherwise static).
+      # Secrets is extra here specifically: this job runs a fresh
+      # `tofu plan`, which refreshes every resource including
+      # github_actions_secret — tofu-apply.yml skips that by applying a
+      # saved plan instead, so it doesn't need this. Read-only: this job
+      # never writes it (ignore_changes). No permission-variables — see
+      # mint-app-token's own comment for why github_actions_variable isn't
+      # tofu-managed at all.
       - name: Mint elevated App token
         id: app-token
         uses: ./.github/actions/mint-app-token
@@ -47,7 +48,6 @@ jobs:
           permission-administration: write
           permission-issues: write
           permission-secrets: read
-          permission-variables: read
 
       # Same TF_ENCRYPTION/backend setup as tofu-apply.yml's merge-triggered
       # job (mirrors .envrc, plain bash string concatenation, never GitHub
