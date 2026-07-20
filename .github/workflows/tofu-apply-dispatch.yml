@@ -30,24 +30,34 @@ jobs:
           curl -fsSL "https://github.com/tofuutils/tenv/releases/download/v${TENV_VERSION}/tenv_v${TENV_VERSION}_Linux_x86_64.tar.gz" \
             | sudo tar -xz -C /usr/local/bin tenv tofu
 
-      # Administration/Issues match tofu-apply.yml's merge-triggered job.
-      # Secrets is extra here specifically: this job runs a fresh
-      # `tofu plan`, which refreshes every resource including
-      # github_actions_secret — tofu-apply.yml skips that by applying a
-      # saved plan instead, so it doesn't need this. Read-only: this job
-      # never writes it (ignore_changes). No permission-variables — see
-      # mint-app-token's own comment for why github_actions_variable isn't
-      # tofu-managed at all.
+      # The App's private key now lives in Bitwarden's `infra` Project, not a
+      # native secret (#47, ADR-0008) — read it fresh via the CI machine
+      # account, same as tofu-apply.yml's merge-triggered job.
+      - name: Read App private key from Bitwarden
+        id: bw-key
+        uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793 # v3.0.1
+        with:
+          access_token: ${{ secrets.BWS_ACCESS_TOKEN }}
+          set_env: false
+          secrets: |
+            ${{ vars.BWS_APP_KEY_SECRET_ID }} > GH_APP_PRIVATE_KEY
+
+      # Administration/Issues match tofu-apply.yml's merge-triggered job. No
+      # permission-secrets: this job's fresh `tofu plan` used to refresh a
+      # github_actions_secret, but the App key moved to Bitwarden (#47) and
+      # no github_actions_secret resource remains in state — its value is
+      # read via sm-action above, not managed by the github provider. No
+      # permission-variables either — see mint-app-token's own comment for
+      # why github_actions_variable isn't tofu-managed.
       - name: Mint elevated App token
         id: app-token
         uses: ./.github/actions/mint-app-token
         with:
           client-id: ${{ vars.GH_APP_CLIENT_ID }}
-          private-key: ${{ secrets.GH_APP_PRIVATE_KEY }}
+          private-key: ${{ steps.bw-key.outputs.GH_APP_PRIVATE_KEY }}
           repositories: dotfiles,infra,project-starter-template
           permission-administration: write
           permission-issues: write
-          permission-secrets: read
 
       # Same TF_ENCRYPTION/backend setup as tofu-apply.yml's merge-triggered
       # job (mirrors .envrc, plain bash string concatenation, never GitHub
@@ -63,6 +73,11 @@ jobs:
           R2_APPLY_STORAGE_TOKEN: ${{ secrets.R2_APPLY_STORAGE_TOKEN }}
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_APPLY_ACCESS_KEY_ID }}
           R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          # The fresh plan refreshes the bitwarden-secrets resources
+          # (ADR-0008), so the provider needs its environment auth here too.
+          BW_ACCESS_TOKEN: ${{ secrets.BWS_ACCESS_TOKEN }}
+          BW_ORGANIZATION_ID: ${{ secrets.BWS_ORGANIZATION_ID }}
+          TF_VAR_bws_infra_project_id: ${{ vars.BWS_INFRA_PROJECT_ID }}
         run: |
           AWS_SECRET_ACCESS_KEY="$(printf '%s' "$R2_APPLY_STORAGE_TOKEN" | shasum -a 256 | cut -d' ' -f1)"
           export AWS_SECRET_ACCESS_KEY

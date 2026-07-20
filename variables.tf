@@ -2,18 +2,17 @@
 # file) — the same avoid-landing-in-source discipline ADR-0002 already
 # applies to R2 credentials and TF_STATE_PASSPHRASE in .envrc.local.
 
-variable "github_app_private_key" {
+variable "bws_infra_project_id" {
   type        = string
-  sensitive   = true
-  default     = ""
+  nullable    = false
   description = <<-EOT
-    The GitHub App's private key (#29). The github_actions_secret resource
-    this feeds (app.tf) is imported, not created, and permanently ignores
-    changes to its value — so this default of "" is never actually sent
-    anywhere; it exists only to satisfy the resource schema. Routine/CI
-    plans (which never hold this value, per ADR-0005) evaluate fine against
-    the default. Supply the real key via TF_VAR_github_app_private_key
-    only if you ever deliberately rotate the key — which also means
-    removing app.tf's ignore_changes line for that one apply.
+    UUID of the Bitwarden `infra` Project (ADR-0008) that the
+    bitwarden-secrets_secret resources live in (the App private key, the
+    Cloudflare API token). A one-time manual bootstrap creates the Project,
+    so this is an account-identifying id, not a literal in this public
+    repo — fed via TF_VAR_bws_infra_project_id from .envrc.local (locally)
+    and vars.BWS_INFRA_PROJECT_ID (CI). Not the secret itself, just which
+    Project to file it under; the secret values are dynamic (set in
+    Bitwarden's UI), never here.
   EOT
 }
