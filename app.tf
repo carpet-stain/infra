@@ -11,13 +11,6 @@
 # membership is added by hand in the App's install settings, same
 # one-time-manual precedent as registration itself. See #30.
 
-locals {
-  # Non-secret identifier for the App registered under #29. The private key
-  # is the one value here that's actually sensitive — it's fed via
-  # variables.tf, not a local, and never appears in a committed file.
-  github_app_client_id = "Iv23liSIn2lcC8vEybpD"
-}
-
 # The App's private key (#29) — this account's single highest-value
 # credential (ADR-0004) — propagated to infra's own Actions secrets only,
 # never to any other managed repo (ADR-0005). Already imported (its
@@ -38,12 +31,21 @@ resource "github_actions_secret" "app_private_key" {
   }
 }
 
-# Not secret — GitHub's own guidance is this is safe to expose (visible on
-# the App's public settings page) and, since 2024, the recommended
-# identifier for actions/create-github-app-token's client-id input (#32),
-# superseding the numeric App ID for that purpose.
-resource "github_actions_variable" "app_client_id" {
-  repository    = github_repository.this["infra"].name
-  variable_name = "GH_APP_CLIENT_ID"
-  value         = local.github_app_client_id
+# GH_APP_CLIENT_ID (infra repo variable) is NOT tofu-managed, even though
+# it was originally created that way. actions/create-github-app-token has
+# no `permission-variables` input at all — confirmed against a live 422,
+# and actions/create-github-app-token#231 is the open upstream issue — so
+# no App-minted token can ever refresh a github_actions_variable resource,
+# which `tofu plan` needs to do for every resource in state, not just
+# changed ones. The value is static and essentially never changes, so
+# losing tofu management costs little; set by hand if it's ever missing:
+# `gh variable set GH_APP_CLIENT_ID --body <client id>` under the elevated
+# session. Not secret — GitHub's own guidance is the client ID is safe to
+# expose (visible on the App's public settings page).
+removed {
+  from = github_actions_variable.app_client_id
+
+  lifecycle {
+    destroy = false
+  }
 }

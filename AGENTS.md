@@ -24,8 +24,11 @@ verbatim.
   `github_repository_ruleset.this`); governance invariants that hold for every
   repo live here, not in per-repo data.
 - `versions.tf` — core + provider pins, R2 backend.
-- `app.tf` — GitHub App credential propagation (ADR-0004): the private key
-  and client ID, scoped to infra's own repo only (ADR-0005).
+- `app.tf` — GitHub App credential propagation (ADR-0004): the private key,
+  scoped to infra's own repo only (ADR-0005). The client ID variable isn't
+  here — set by hand (`gh variable set GH_APP_CLIENT_ID`), since no
+  App-minted token can refresh a `github_actions_variable` resource
+  (`actions/create-github-app-token` has no permission for it at all).
 - `variables.tf` — apply-time inputs fed via `TF_VAR_*`, never a literal in
   a committed file (currently just the App's private key).
 - `.github/actions/mint-app-token/` — composite action minting scoped
