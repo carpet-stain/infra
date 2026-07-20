@@ -109,6 +109,11 @@ main" escape hatch (#26) after the fact — never revert the merge.
 - `git pr --draft` opens the early draft; `git pr` finalizes it (`gh pr ready`).
   There's no direct-to-ready path.
 - `act` runs the Actions workflows locally via Docker for testing without pushing.
+- **`comment-concision`** (`scripts/check-comment-concision.sh`, ADR-0006) is
+  advisory only, unlike every other job here — it always exits 0 and only
+  nudges toward re-reading an outlier-length (15+ line) comment block on one
+  declaration, mirroring `dotfiles`' reference implementation
+  (`dotfiles` ADR-0031) rather than an independently-derived design.
 
 ## Credentials
 
@@ -244,9 +249,10 @@ env -u GH_TOKEN -u GITHUB_TOKEN gh secret set R2_APPLY_STORAGE_TOKEN
 ## How to verify changes
 
 - `just lint` — the full local pre-commit union: actionlint, markdownlint,
-  prettier, yamlfmt, envrc-sync, plus the OpenTofu `lang` slice (`tofu fmt
--check`, `tflint`, `trivy config`). Scope to one slice with `just lint --tag
-base` or `--tag lang` — the exact slices `lint.yml` and `tofu.yml` run in CI.
+  prettier, yamlfmt, envrc-sync, comment-concision, plus the OpenTofu `lang`
+  slice (`tofu fmt -check`, `tflint`, `trivy config`). Scope to one slice
+  with `just lint --tag base` or `--tag lang` — the exact slices `lint.yml`
+  and `tofu.yml` run in CI.
 - `just tofu init` (once per checkout), then `just tofu plan` — the real
   end-to-end check; review the plan before any `just tofu-apply`. See
   Credentials for the token scope each verb needs.

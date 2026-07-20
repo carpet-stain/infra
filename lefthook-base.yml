@@ -40,6 +40,13 @@ pre-commit:
         - "lefthook-lang.yml"
       run: yamlfmt -lint {staged_files}
 
+    - name: comment-concision
+      tags: [base]
+      glob:
+        - "*.tf"
+        - "scripts/*.sh"
+      run: scripts/check-comment-concision.sh {staged_files}
+
     - name: envrc-local-example-sync
       tags: [base]
       run: scripts/check-envrc-local-example.sh
