@@ -64,6 +64,15 @@ inputs:
       `github_actions_variable` resources aren't tofu-managed here (app.tf).
     required: false
     default: ""
+  skip-token-revoke:
+    description: >
+      Set "true" to NOT revoke the minted token when the job ends. Default
+      (revoke) is right for in-job use like `tofu apply` — the token is spent
+      by job end. The vend workflow sets this "true" because its token is
+      written to Bitwarden for a *later* consumer, so revoking it at job end
+      would hand out a dead token (401).
+    required: false
+    default: "false"
 
 outputs:
   token:
@@ -85,3 +94,4 @@ runs:
         permission-issues: ${{ inputs.permission-issues }}
         permission-pull-requests: ${{ inputs.permission-pull-requests }}
         permission-secrets: ${{ inputs.permission-secrets }}
+        skip-token-revoke: ${{ inputs.skip-token-revoke }}
