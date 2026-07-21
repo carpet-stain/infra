@@ -77,19 +77,24 @@ jobs:
           curl -fsSL "https://github.com/tofuutils/tenv/releases/download/v${TENV_VERSION}/tenv_v${TENV_VERSION}_Linux_x86_64.tar.gz" \
             | sudo tar -xz -C /usr/local/bin tenv tofu
 
-      # The App's private key now lives in Bitwarden's `infra` Project, not a
-      # native secret (#47, ADR-0008) — read it fresh here via the CI machine
-      # account (BWS_ACCESS_TOKEN, read/write on `infra`). set_env: false so
-      # the key is a step output, not broadcast into the job env; sm-action
-      # masks it in logs either way.
-      - name: Read App private key from Bitwarden
-        id: bw-key
+      # The App's private key and the state-backend credentials (passphrase,
+      # read-write R2 pair, account id) all live in Bitwarden's `infra`
+      # Project now, not native secrets (#47/#59, ADR-0008) — read them here
+      # via the CI machine account (BWS_ACCESS_TOKEN, read/write on `infra`).
+      # set_env: false so they're step outputs, not broadcast into job env;
+      # sm-action masks them.
+      - name: Read secrets from Bitwarden
+        id: bw
         uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793 # v3.0.1
         with:
           access_token: ${{ secrets.BWS_ACCESS_TOKEN }}
           set_env: false
           secrets: |
             ${{ vars.BWS_APP_KEY_SECRET_ID }} > GH_APP_PRIVATE_KEY
+            ${{ vars.BWS_PASSPHRASE_SECRET_ID }} > TF_STATE_PASSPHRASE
+            ${{ vars.BWS_R2_APPLY_KEY_SECRET_ID }} > R2_APPLY_ACCESS_KEY_ID
+            ${{ vars.BWS_R2_APPLY_TOKEN_SECRET_ID }} > R2_APPLY_STORAGE_TOKEN
+            ${{ vars.BWS_R2_ACCOUNT_SECRET_ID }} > R2_ACCOUNT_ID
 
       # Scoped to exactly what main.tf's resources write: Administration
       # (repo settings, rulesets) and Issues (labels) — nothing else, and
@@ -99,7 +104,7 @@ jobs:
         uses: ./.github/actions/mint-app-token
         with:
           client-id: ${{ vars.GH_APP_CLIENT_ID }}
-          private-key: ${{ steps.bw-key.outputs.GH_APP_PRIVATE_KEY }}
+          private-key: ${{ steps.bw.outputs.GH_APP_PRIVATE_KEY }}
           repositories: dotfiles,infra,project-starter-template
           permission-administration: write
           permission-issues: write
@@ -113,10 +118,10 @@ jobs:
         env:
           TENV_AUTO_INSTALL: "true"
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
-          TF_STATE_PASSPHRASE: ${{ secrets.TF_STATE_PASSPHRASE }}
-          R2_APPLY_STORAGE_TOKEN: ${{ secrets.R2_APPLY_STORAGE_TOKEN }}
-          AWS_ACCESS_KEY_ID: ${{ secrets.R2_APPLY_ACCESS_KEY_ID }}
-          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          TF_STATE_PASSPHRASE: ${{ steps.bw.outputs.TF_STATE_PASSPHRASE }}
+          R2_APPLY_STORAGE_TOKEN: ${{ steps.bw.outputs.R2_APPLY_STORAGE_TOKEN }}
+          AWS_ACCESS_KEY_ID: ${{ steps.bw.outputs.R2_APPLY_ACCESS_KEY_ID }}
+          R2_ACCOUNT_ID: ${{ steps.bw.outputs.R2_ACCOUNT_ID }}
           # The bitwarden-secrets provider (ADR-0008) is configured from the
           # environment even for a saved-plan apply — CI machine account
           # token + org UUID, plus the Project id the secret resources file
