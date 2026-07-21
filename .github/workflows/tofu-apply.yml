@@ -15,6 +15,19 @@ name: Tofu apply
 on:
   push:
     branches: ["main"]
+    # Only merges that actually touch tofu files need an apply — otherwise
+    # this ran on every docs/CI merge and applied a 0-change no-op, minting
+    # an elevated App token for nothing and cluttering the run history.
+    # Deliberately NOT mirrored onto tofu-plan.yml: plan must keep running on
+    # every PR push so its tfplan artifact always matches the latest tree
+    # hash. If plan were filtered too, a PR that touched a .tf and then got a
+    # later non-tofu push wouldn't re-plan, and this apply would fail hunting
+    # for an artifact keyed to a tree that no plan ever ran for. Need to force
+    # an apply for a non-tofu change? The workflow_dispatch escape hatch
+    # (tofu-apply-dispatch.yml, #26) runs a fresh plan+apply, no artifact.
+    paths:
+      - "**.tf"
+      - ".terraform.lock.hcl"
 
 permissions:
   contents: read
