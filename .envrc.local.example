@@ -33,3 +33,15 @@ export TF_STATE_PASSPHRASE=
 export BW_ACCESS_TOKEN=
 export BW_ORGANIZATION_ID=
 export TF_VAR_bws_infra_project_id=
+
+# Cloudflare provider (#7, epic #6) — a least-privilege API token the
+# `cloudflare` provider reads directly for managing the R2 state bucket
+# (#8) and DNS (#9). Create it at Cloudflare dashboard → My Profile → API
+# Tokens → Create Token (custom), with permission groups: Zone → Zone →
+# Read, Zone → DNS → Edit, and Account → Workers R2 Storage → Edit; scope
+# Zone Resources to the managed zones. This is a Cloudflare API *bearer*
+# token — NOT the R2 *S3* token above (R2_STORAGE_TOKEN, R2's separate
+# access-key flow); they are two different credentials. The same value is
+# also declared in Bitwarden (cloudflare.tf); #59 folds this local copy
+# into the `bws`-fetch sweep so it stops living in two places.
+export CLOUDFLARE_API_TOKEN=

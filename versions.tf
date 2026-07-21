@@ -17,6 +17,10 @@ terraform {
       source  = "bitwarden/bitwarden-secrets"
       version = "~> 1.0"
     }
+    cloudflare = {
+      source  = "cloudflare/cloudflare"
+      version = "~> 5.0"
+    }
   }
 
   backend "s3" {
@@ -54,3 +58,15 @@ provider "bitwarden-secrets" {
   api_url      = "https://api.bitwarden.com"
   identity_url = "https://identity.bitwarden.com"
 }
+
+# Cloudflare account governance (#7, epic #6): the provider that the R2
+# state bucket (#8) and DNS (#9) will be managed through. Auth is a
+# least-privilege API token via the CLOUDFLARE_API_TOKEN env var (from
+# .envrc.local, same never-a-literal discipline as everything else) — the
+# v5 provider reads it directly, so this block stays empty. Auth is lazy:
+# with no cloudflare resources yet this plans clean without the token, so
+# CI needs nothing until #8 lands a resource. NOTE this is a Cloudflare
+# API *bearer* token (Zone:Read, DNS:Edit, Workers R2 Storage:Edit) — a
+# different credential from the R2 *S3* token the state backend uses
+# (R2_STORAGE_TOKEN, ADR-0002), which is R2's separate access-key flow.
+provider "cloudflare" {}
