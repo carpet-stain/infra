@@ -39,12 +39,18 @@ provider "github" {
   owner = "carpet-stain"
 }
 
-# Bitwarden Secrets Manager, the account's secret store (ADR-0008). Auth is
-# entirely environment-sourced — the machine account's token via
+# Bitwarden Secrets Manager, the account's secret store (ADR-0008). Secret
+# material is environment-sourced — the machine account's token via
 # BW_ACCESS_TOKEN and the org UUID via BW_ORGANIZATION_ID (both Sensitive,
 # both from .envrc.local, same never-a-literal-in-source discipline ADR-0002
-# applies to R2 credentials) — so this block stays empty. NOTE the prefix:
-# the provider reads BW_*; the `bws` CLI the vend workflow uses for writes
-# reads BWS_* — different tokens for different machine accounts, don't cross
-# them.
-provider "bitwarden-secrets" {}
+# applies to R2 credentials). The endpoints are the opposite: public,
+# region-fixed Bitwarden-cloud URLs — not account identifiers, not secret —
+# and the provider has NO defaults for them (it errors at configure/plan
+# without them), so they're pinned here rather than env-sourced. US cloud;
+# EU would be api.bitwarden.eu / identity.bitwarden.eu. NOTE the prefix: the
+# provider reads BW_*; the `bws` CLI the vend workflow uses for writes reads
+# BWS_* — different tokens for different machine accounts, don't cross them.
+provider "bitwarden-secrets" {
+  api_url      = "https://api.bitwarden.com"
+  identity_url = "https://identity.bitwarden.com"
+}
