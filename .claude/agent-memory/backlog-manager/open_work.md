@@ -7,21 +7,36 @@ metadata:
 
 Outstanding follow-ups after the first backlog fill (2026-07-18):
 
-**Epic #50 (Bitwarden Secrets Manager) — code shipped 2026-07-20, epic + all three sub-issues
-stay open pending manual verification.** PR #58 merged all three sub-issues' implementation
-(#46 provider wiring, #47 App-key migration, #51 token vending) in one PR, deliberately not using
-`Closes #N` — the acceptance criteria on #46/#47/#51 (and the epic) require a one-time manual
-Bitwarden bootstrap (Organization, both Projects, three Machine Accounts, the grants between them)
-plus live verification (`tofu plan` clean, the vended-token write-rejection test, a `vend-token.yml`
-dry run) that only a human can do against real Bitwarden state — not provable in CI, so the
-issues can't be marked done by the merge. Posted a status comment on all four (#46, #47, #50, #51)
-listing the specific remaining-to-verify items per issue's own acceptance criteria. ADR-0008
-(`docs/adr/0008-bitwarden-secrets-manager-two-project-store-and-token-vending.md`) records the
-decision, resolving infra#33. Bootstrap steps live in `docs/BOOTSTRAP.md` §6; the Machine-Account
-grant table lives in AGENTS.md — don't restate either into issue bodies. #59 (migrate the
-remaining standing secrets — TF_STATE_PASSPHRASE, R2 credential pairs, CI GH_TOKEN) was filed as a
-deferred follow-up, not part of this epic's closing bar. **When the bootstrap is eventually done**,
-these four issues need closing by hand (not a PR merge) with a comment confirming what was verified.
+**Epic #50 (Bitwarden Secrets Manager) — CLOSED 2026-07-20, fully shipped, bootstrapped, and
+verified end-to-end.** PR #58 merged all three sub-issues' implementation (#46 provider wiring,
+#47 App-key migration, #51 token vending) in one PR without `Closes #N`, deliberately leaving
+#46/#47/#50/#51 open pending a manual Bitwarden bootstrap + live verification only a human could
+run. That verification is now done and all four closed as completed, each with a comment citing
+its evidence:
+- **#46**: `bitwarden-secrets` provider wired, CI `tofu plan` green on `main`; both infra-Project
+  secrets (`GH_APP_PRIVATE_KEY`, `CLOUDFLARE_API_TOKEN`) imported (`tofu apply`: 2 imported); CI
+  machine account's grants match AGENTS.md's grant table. Two follow-up fixes needed and merged in
+  PR #62 (ADR-0008): provider needs explicit `api_url`/`identity_url` (no defaults); secret
+  resources need `lifecycle { ignore_changes = [value] }` so the provider stops regenerating
+  externally-set values.
+- **#47**: App private key lives only in Bitwarden now; `tofu-apply.yml`/`vend-token.yml` read it
+  via `bitwarden/sm-action` (verified live run: "Read App private key from Bitwarden: success" →
+  "Mint elevated App token: success"). Native `GH_APP_PRIVATE_KEY` Actions secret deleted by hand.
+- **#51**: `vend-token.yml` publishes `{token, expires_at}` to the `vended-tokens` Project, token
+  masked in logs. Write-rejection check passed: vended token gets 403 "Resource not accessible by
+  integration" against `infra` (excluded from its repo scope) while working on other repos. A
+  revoke bug (mint was revoking the token at job end) found and fixed in PR #63 via
+  `skip-token-revoke`.
+
+ADR-0008 (`docs/adr/0008-bitwarden-secrets-manager-two-project-store-and-token-vending.md`)
+records the decision, resolving infra#33. Bootstrap steps live in `docs/BOOTSTRAP.md` §6; the
+Machine-Account grant table lives in AGENTS.md — don't restate either into issue bodies.
+
+**#59 (feat(tofu): migrate remaining CI/local standing secrets to Bitwarden) — still OPEN,
+deferred.** Covers TF_STATE_PASSPHRASE, R2 credential pairs, CI GH_TOKEN. Was never part of epic
+#50's closing bar — filed as a deliberate follow-up, not a blocker.
+
+**#7 (feat(tofu): add cloudflare provider and scoped api token) — CLOSED, merged via #61.**
 
 **`theme: cloudflare` label — tracked by issue #13 (sub-issue of Epic #6).** Approved to add to
 `local.labels` in repos.tf (color F38020, desc "Cloudflare account surface — provider, zones, DNS,
@@ -46,8 +61,8 @@ means the entry creates the label on BOTH infra and dotfiles (shared canonical s
 - Spike #10 flags the tofu-state-write trap, still open, still "leaning to validate," NOT decided.
   Don't treat the leaning as the outcome.
 
-**Epic child dependencies:** #8 and #9 depend on #7 (provider must land first). Reflected in their
-bodies, not in a label — no native dependency link set.
+**Epic child dependencies:** #8 and #9 depend on #7 (provider must land first, now merged).
+Reflected in their bodies, not in a label — no native dependency link set.
 
 **#19 (spike, architecture, `theme: credentials`, priority medium) — GitHub PAT provisioning +
 cross-repo delegation model, filed 2026-07-18.** Not a child of epic #6 — deliberately standalone,
@@ -77,7 +92,9 @@ account, no org-secret-restricted-to-N-repos feature to fall back on) — don't 
 for anything written into an issue. #31 and #32 rewritten to match (infra-only secret, infra-only
 minting); the native `blocked-by #34` link removed from both (#31 stays `blocked` — still blocked
 by open #29; #32 was never `blocked`-labeled). Epic #28's body corrected to match. #33 stays open,
-unaffected either way — ADR-0005 says so explicitly.
+unaffected either way — ADR-0005 says so explicitly. Note: the App's private key itself was later
+migrated into Bitwarden (epic #50, #47) — the native Actions secret this ADR describes no longer
+exists; ADR-0008 is the current source for where the key lives.
 
 **Reusable fact for future credential-scoping issues:** every GitHub Actions job already gets a
 repo-scoped `GITHUB_TOKEN` for free, set via that workflow's own `permissions:` block — that
