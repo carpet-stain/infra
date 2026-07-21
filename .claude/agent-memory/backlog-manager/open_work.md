@@ -7,6 +7,22 @@ metadata:
 
 Outstanding follow-ups after the first backlog fill (2026-07-18):
 
+**Epic #50 (Bitwarden Secrets Manager) — code shipped 2026-07-20, epic + all three sub-issues
+stay open pending manual verification.** PR #58 merged all three sub-issues' implementation
+(#46 provider wiring, #47 App-key migration, #51 token vending) in one PR, deliberately not using
+`Closes #N` — the acceptance criteria on #46/#47/#51 (and the epic) require a one-time manual
+Bitwarden bootstrap (Organization, both Projects, three Machine Accounts, the grants between them)
+plus live verification (`tofu plan` clean, the vended-token write-rejection test, a `vend-token.yml`
+dry run) that only a human can do against real Bitwarden state — not provable in CI, so the
+issues can't be marked done by the merge. Posted a status comment on all four (#46, #47, #50, #51)
+listing the specific remaining-to-verify items per issue's own acceptance criteria. ADR-0008
+(`docs/adr/0008-bitwarden-secrets-manager-two-project-store-and-token-vending.md`) records the
+decision, resolving infra#33. Bootstrap steps live in `docs/BOOTSTRAP.md` §6; the Machine-Account
+grant table lives in AGENTS.md — don't restate either into issue bodies. #59 (migrate the
+remaining standing secrets — TF_STATE_PASSPHRASE, R2 credential pairs, CI GH_TOKEN) was filed as a
+deferred follow-up, not part of this epic's closing bar. **When the bootstrap is eventually done**,
+these four issues need closing by hand (not a PR merge) with a comment confirming what was verified.
+
 **`theme: cloudflare` label — tracked by issue #13 (sub-issue of Epic #6).** Approved to add to
 `local.labels` in repos.tf (color F38020, desc "Cloudflare account surface — provider, zones, DNS,
 R2, stores"). Does NOT exist in GitHub yet — labels are terraform-managed, needs the repos.tf edit
