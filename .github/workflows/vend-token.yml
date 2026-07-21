@@ -73,6 +73,10 @@ jobs:
           permission-contents: write
           permission-issues: write
           permission-pull-requests: write
+          # The vended token is consumed later by a local shell, not in this
+          # job — so it must survive past job end. Without this, the action
+          # revokes it on cleanup and every consumer gets a dead token (401).
+          skip-token-revoke: "true"
 
       - name: Install bws (pinned)
         env:
