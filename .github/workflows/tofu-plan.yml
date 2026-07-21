@@ -33,21 +33,18 @@ jobs:
     if: github.event.pull_request.draft == false
     # Read-only credentials only (#24's acceptance criterion) — no
     # Administration-scoped or write-capable GitHub secret reaches this job.
-    # The one exception is BWS_ACCESS_TOKEN: the CI machine account is
-    # read/write on `infra` (a plan refresh only reads the two
-    # bitwarden-secrets, but the same account does the apply-side writes),
-    # and a fourth, read-only machine account would exceed Bitwarden's
-    # free-tier three-account cap (ADR-0008) — a deliberate tradeoff, since
-    # the token still can't reach `vended-tokens` at all.
+    # BWS_ACCESS_TOKEN is the one native root (#59): the CI machine account
+    # (read/write on `infra`) both configures the bitwarden-secrets provider
+    # AND fetches the state passphrase + read-only R2 creds from Bitwarden at
+    # runtime (the sm-action step below), so those are no longer native
+    # GitHub secrets. A fourth, read-only machine account would exceed
+    # Bitwarden's free-tier three-account cap (ADR-0008); the token still
+    # can't reach `vended-tokens`.
     env:
       GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
-      TF_STATE_PASSPHRASE: ${{ secrets.TF_STATE_PASSPHRASE }}
-      R2_PLAN_STORAGE_TOKEN: ${{ secrets.R2_PLAN_STORAGE_TOKEN }}
-      AWS_ACCESS_KEY_ID: ${{ secrets.R2_PLAN_ACCESS_KEY_ID }}
-      R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
       # The bitwarden-secrets provider (ADR-0008) configures from the
-      # environment; a plan refreshes the App-key and Cloudflare-token
-      # secrets, which needs read on `infra`.
+      # environment; a plan refreshes the managed secrets, which needs read
+      # on `infra`.
       BW_ACCESS_TOKEN: ${{ secrets.BWS_ACCESS_TOKEN }}
       BW_ORGANIZATION_ID: ${{ secrets.BWS_ORGANIZATION_ID }}
       TF_VAR_bws_infra_project_id: ${{ vars.BWS_INFRA_PROJECT_ID }}
@@ -61,6 +58,22 @@ jobs:
           curl -fsSL "https://github.com/tofuutils/tenv/releases/download/v${TENV_VERSION}/tenv_v${TENV_VERSION}_Linux_x86_64.tar.gz" \
             | sudo tar -xz -C /usr/local/bin tenv tofu
 
+      # State-backend credentials — the passphrase, the read-only R2 pair, and
+      # the account id — now live in Bitwarden, not native GitHub secrets
+      # (#59), fetched here via the CI machine account. set_env: false keeps
+      # them step outputs rather than job-wide env; sm-action masks them.
+      - name: Fetch backend secrets from Bitwarden
+        id: bw-backend
+        uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793 # v3.0.1
+        with:
+          access_token: ${{ secrets.BWS_ACCESS_TOKEN }}
+          set_env: false
+          secrets: |
+            ${{ vars.BWS_PASSPHRASE_SECRET_ID }} > TF_STATE_PASSPHRASE
+            ${{ vars.BWS_R2_PLAN_KEY_SECRET_ID }} > R2_PLAN_ACCESS_KEY_ID
+            ${{ vars.BWS_R2_PLAN_TOKEN_SECRET_ID }} > R2_PLAN_STORAGE_TOKEN
+            ${{ vars.BWS_R2_ACCOUNT_SECRET_ID }} > R2_ACCOUNT_ID
+
       # Mirrors .envrc's own derivation exactly (ADR-0002): the R2 S3 secret
       # is sha256(storage token), the endpoint carries the account ID, and
       # TF_ENCRYPTION is built from the shared passphrase via plain bash
@@ -71,6 +84,10 @@ jobs:
         id: plan
         env:
           TENV_AUTO_INSTALL: "true"
+          TF_STATE_PASSPHRASE: ${{ steps.bw-backend.outputs.TF_STATE_PASSPHRASE }}
+          R2_PLAN_STORAGE_TOKEN: ${{ steps.bw-backend.outputs.R2_PLAN_STORAGE_TOKEN }}
+          AWS_ACCESS_KEY_ID: ${{ steps.bw-backend.outputs.R2_PLAN_ACCESS_KEY_ID }}
+          R2_ACCOUNT_ID: ${{ steps.bw-backend.outputs.R2_ACCOUNT_ID }}
         run: |
           AWS_SECRET_ACCESS_KEY="$(printf '%s' "$R2_PLAN_STORAGE_TOKEN" | shasum -a 256 | cut -d' ' -f1)"
           export AWS_SECRET_ACCESS_KEY
