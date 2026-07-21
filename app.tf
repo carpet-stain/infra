@@ -11,23 +11,23 @@
 # membership is added by hand in the App's install settings, same
 # one-time-manual precedent as registration itself. See #30.
 
-# The App's private key (#29) — this account's single highest-value
-# credential (ADR-0004/0005) — now lives in Bitwarden's `infra` Project
-# (ADR-0008), migrated off the native GitHub Actions secret #31 first put
-# it in (#47) so every secret this account holds has one source of truth.
-# Dynamic secret: no `value` in config. The real key is set by hand in
-# Bitwarden's UI during the one-time bootstrap and adopted with a temporary
-# `import` block (README's adopt-then-delete convention) — so tofu never
-# holds or sends the key, and the provider's dynamic-secrets tracking picks
-# up the UI value with no config diff. The value still lands in state, but
-# state is already R2-backed and client-side encrypted under ADR-0002's
-# enforced TF_ENCRYPTION, so no new encryption step (ADR-0008). infra's CI
-# reads it via bitwarden/sm-action at mint time (tofu-apply.yml,
-# vend-token.yml), never from a native secret.
+# The App's private key (#29) — this account's highest-value credential
+# (ADR-0004/0005) — lives in Bitwarden's `infra` Project, migrated off the
+# native GitHub Actions secret (#47, ADR-0008). No `value` in config: the key
+# is set in Bitwarden's UI and adopted with a temporary `import` block
+# (README's adopt-then-delete convention). `ignore_changes = [value]` is
+# load-bearing — without it the provider treats the secret as
+# generator-managed and plans to overwrite the `.pem` with a random value on
+# apply; ignoring the attribute keeps rotation a UI-only action. CI reads the
+# key via bitwarden/sm-action at mint time, never a native secret.
 resource "bitwarden-secrets_secret" "app_private_key" {
   key        = "GH_APP_PRIVATE_KEY"
   project_id = var.bws_infra_project_id
-  note       = "GitHub App RSA private key (#29, ADR-0008). Rotate by setting the new value in the Bitwarden UI — dynamic-secrets tracking imports it, no apply needed."
+  note       = "GitHub App RSA private key (#29, ADR-0008). Rotate by setting the new value in the Bitwarden UI; tofu ignores the value."
+
+  lifecycle {
+    ignore_changes = [value]
+  }
 }
 
 # Drop the native GitHub Actions secret #31 created from tofu's state — #47
