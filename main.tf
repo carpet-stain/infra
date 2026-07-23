@@ -17,10 +17,6 @@ resource "github_repository" "this" {
   has_projects = each.value.has_projects
   has_wiki     = each.value.has_wiki
 
-  # Legacy flag; matches the live default — leaving it unmodeled would null
-  # it on the first post-import apply.
-  has_downloads = true
-
   has_discussions  = each.value.has_discussions
   allow_auto_merge = each.value.allow_auto_merge
 
