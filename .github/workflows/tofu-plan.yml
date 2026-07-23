@@ -31,17 +31,15 @@ jobs:
     # Same per-job draft gate as tofu.yml/pr-guards.yml: quiet on WIP drafts,
     # re-triggered for real at ready_for_review.
     if: github.event.pull_request.draft == false
-    # Read-only credentials only (#24's acceptance criterion) — no
-    # Administration-scoped or write-capable GitHub secret reaches this job.
-    # BWS_ACCESS_TOKEN is the one native root (#59): the CI machine account
-    # (read/write on `infra`) both configures the bitwarden-secrets provider
-    # AND fetches the state passphrase + read-only R2 creds from Bitwarden at
-    # runtime (the sm-action step below), so those are no longer native
-    # GitHub secrets. A fourth, read-only machine account would exceed
-    # Bitwarden's free-tier three-account cap (ADR-0008); the token still
-    # can't reach `vended-tokens`.
+    # No native GitHub token secret reaches this job (#59): the github
+    # provider's read credential is an App-minted, read-scoped token (minted
+    # below, confined to the plan step), replacing the standing GH_TOKEN PAT;
+    # the PR-comment step uses the workflow's own ephemeral github.token
+    # (pull-requests: write, above), narrower than the old cross-repo PAT.
+    # BWS_ACCESS_TOKEN is the one native root: the CI machine account
+    # (read/write on `infra`) configures the bitwarden-secrets provider and
+    # fetches the backend secrets + the App key from Bitwarden at runtime.
     env:
-      GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
       # The bitwarden-secrets provider (ADR-0008) configures from the
       # environment; a plan refreshes the managed secrets, which needs read
       # on `infra`.
@@ -58,11 +56,11 @@ jobs:
           curl -fsSL "https://github.com/tofuutils/tenv/releases/download/v${TENV_VERSION}/tenv_v${TENV_VERSION}_Linux_x86_64.tar.gz" \
             | sudo tar -xz -C /usr/local/bin tenv tofu
 
-      # State-backend credentials — the passphrase, the read-only R2 pair, and
-      # the account id — now live in Bitwarden, not native GitHub secrets
-      # (#59), fetched here via the CI machine account. set_env: false keeps
-      # them step outputs rather than job-wide env; sm-action masks them.
-      - name: Fetch backend secrets from Bitwarden
+      # The state-backend credentials and the App private key live in
+      # Bitwarden, not native GitHub secrets (#59) — fetched here via the CI
+      # machine account. set_env: false keeps them step outputs rather than
+      # job-wide env; sm-action masks them.
+      - name: Read secrets from Bitwarden
         id: bw-backend
         uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793 # v3.0.1
         with:
@@ -73,6 +71,22 @@ jobs:
             ${{ vars.BWS_R2_PLAN_KEY_SECRET_ID }} > R2_PLAN_ACCESS_KEY_ID
             ${{ vars.BWS_R2_PLAN_TOKEN_SECRET_ID }} > R2_PLAN_STORAGE_TOKEN
             ${{ vars.BWS_R2_ACCOUNT_SECRET_ID }} > R2_ACCOUNT_ID
+            ${{ vars.BWS_APP_KEY_SECRET_ID }} > GH_APP_PRIVATE_KEY
+
+      # The github provider's read credential: an App-minted token scoped to
+      # read repo/label/ruleset state across the managed repos, replacing the
+      # standing GH_TOKEN PAT (#59). administration:read covers repo settings,
+      # rulesets, and vulnerability_alerts; issues:read covers labels;
+      # metadata is automatic. No write scope — a plan never mutates.
+      - name: Mint read-only App token
+        id: app-token
+        uses: ./.github/actions/mint-app-token
+        with:
+          client-id: ${{ vars.GH_APP_CLIENT_ID }}
+          private-key: ${{ steps.bw-backend.outputs.GH_APP_PRIVATE_KEY }}
+          repositories: dotfiles,infra,project-starter-template
+          permission-administration: read
+          permission-issues: read
 
       # Mirrors .envrc's own derivation exactly (ADR-0002): the R2 S3 secret
       # is sha256(storage token), the endpoint carries the account ID, and
@@ -84,6 +98,9 @@ jobs:
         id: plan
         env:
           TENV_AUTO_INSTALL: "true"
+          # The github provider's credential — the App-minted read token, not
+          # a standing PAT (#59). Confined to this step, not job-wide.
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
           TF_STATE_PASSPHRASE: ${{ steps.bw-backend.outputs.TF_STATE_PASSPHRASE }}
           R2_PLAN_STORAGE_TOKEN: ${{ steps.bw-backend.outputs.R2_PLAN_STORAGE_TOKEN }}
           AWS_ACCESS_KEY_ID: ${{ steps.bw-backend.outputs.R2_PLAN_ACCESS_KEY_ID }}
@@ -136,6 +153,10 @@ jobs:
 
       - name: Upsert PR comment with the rendered plan
         env:
+          # The workflow's own ephemeral token, not the retired PAT (#59) —
+          # pull-requests: write (job permissions) covers commenting on the
+          # PR, scoped to this repo only.
+          GH_TOKEN: ${{ github.token }}
           TREE_SHA: ${{ steps.plan.outputs.tree_sha }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
