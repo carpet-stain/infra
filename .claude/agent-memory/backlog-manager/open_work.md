@@ -32,9 +32,37 @@ ADR-0008 (`docs/adr/0008-bitwarden-secrets-manager-two-project-store-and-token-v
 records the decision, resolving infra#33. Bootstrap steps live in `docs/BOOTSTRAP.md` §6; the
 Machine-Account grant table lives in AGENTS.md — don't restate either into issue bodies.
 
-**#59 (feat(tofu): migrate remaining CI/local standing secrets to Bitwarden) — still OPEN,
-deferred.** Covers TF_STATE_PASSPHRASE, R2 credential pairs, CI GH_TOKEN. Was never part of epic
-#50's closing bar — filed as a deliberate follow-up, not a blocker.
+**#59 (feat(tofu): migrate remaining CI/local standing secrets to Bitwarden) — CLOSED 2026-07-23,
+fully shipped and verified.** This completes the whole Bitwarden secrets migration arc: epic #50 +
+#7 + #59 are all done now. Three PRs:
+- **PR #66** (part 1a): CI backend secrets (state passphrase, both R2 credential pairs, R2 account
+  id) off native Actions secrets into Bitwarden's `infra` Project, fetched via `bitwarden/sm-action`
+  in all three tofu workflows. Not tofu-managed (bootstrap-root creds). Verified: dispatch apply
+  sourced entirely from Bitwarden went green; native secrets deleted.
+- **PR #67** (part 1b): CI's routine `GH_TOKEN` PAT retired. Plan job mints an
+  `administration:read`+`issues:read` App token for the provider, posts its PR comment via the
+  ephemeral `github.token`. Verified: the PR's own `tofu plan` refreshed repos/labels/rulesets
+  green; native `GH_TOKEN` secret deleted.
+- **PR #68** (part 2, `architecture`): local elevated secrets (state passphrase + R2 read/write
+  creds) no longer plaintext in `.envrc.local`. `scripts/with-infra-secrets.sh`, wrapped by
+  `just tofu`/`tofu-apply`, fetches from Bitwarden at invocation using a machine-account token in
+  a **gated** macOS Keychain item (no app ACL → prompts per read; agent shells fail closed).
+  Recorded in **ADR-0009**
+  (`docs/adr/0009-fetch-remaining-secrets-from-bitwarden-at-runtime.md`), which explicitly refines
+  ADR-0008's "local never touches infra" invariant to "never ambiently exported." Verified locally
+  by the human: `just tofu init`/`plan` fetched via the Keychain prompt and planned clean.
+
+**Verified end state:** CI's entire native GitHub-secret footprint is exactly `BWS_ACCESS_TOKEN` +
+`BWS_ORGANIZATION_ID` + `BWS_VENDING_ACCESS_TOKEN` (`gh secret list`) — one root credential per
+surface (#33's principle). No crown-jewel secret is ambient in CI or on disk.
+
+**Follow-up filed, out of #59's scope:** `bws` CLI isn't on Homebrew, so the machine-tooling
+install for `scripts/with-infra-secrets.sh`'s dependency is tracked in
+**carpet-stain/dotfiles#388**, not here — that's the machine-tooling layer's job, not governance.
+
+**Small hygiene note:** PR #69 dropped the deprecated `has_downloads` repo attribute from
+`main.tf` — ended a recurring phantom 3-repo plan drift + per-repo deprecation warnings. Applied
+clean, no issue needed for something this mechanical.
 
 **#7 (feat(tofu): add cloudflare provider and scoped api token) — CLOSED, merged via #61.**
 
