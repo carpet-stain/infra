@@ -9,39 +9,35 @@
 # bootstrap script.
 export GH_TOKEN=
 
-# OpenTofu state backend (ADR-0002). R2 API token: Cloudflare dashboard →
-# R2 → Manage R2 API Tokens → Object Read & Write, scoped to the
-# tofu-state bucket. The access key ID is the token's ID (shown at
-# creation, or GET /user/tokens/verify); .envrc derives the S3 secret from
-# the token.
-export R2_STORAGE_TOKEN=
-export R2_ACCESS_KEY_ID=
-# Cloudflare account ID (the R2 endpoint hostname / dashboard URL).
-export R2_ACCOUNT_ID=
-# State encryption passphrase — generate once (openssl rand -hex 32) and
-# back it up in a password manager: without it the state is unreadable and
-# every resource must be re-imported (ADR-0002).
-export TF_STATE_PASSPHRASE=
+# The state passphrase and R2 read/write backend credentials are NOT here
+# anymore (#59, ADR-0009) — they live only in Bitwarden and are fetched at
+# invocation, gated behind the macOS Keychain, by
+# scripts/with-infra-secrets.sh. So always run tofu via `just tofu` /
+# `just tofu-apply`, never bare, and expect a Keychain "Allow" prompt.
+#
+# One-time setup — store the `infra` machine-account token (the same
+# read/write-on-infra token CI holds as BWS_ACCESS_TOKEN) in the login
+# Keychain WITHOUT an app ACL, so every read prompts (that's the gate):
+#     security add-generic-password -s infra-bws -a "$USER" -w
+#   (paste the token at the prompt; omitting -A is deliberate.)
+# Needs the `bws` CLI — not on Homebrew; download the release binary matching
+# the version vend-token.yml pins (macOS: bws-<arch>-apple-darwin), or
+# `cargo install bws`. Rotate the Keychain item by re-running the command
+# above with `-U`.
 
-# Bitwarden Secrets Manager (ADR-0008) — a local `tofu plan`/`apply` now
-# reads the App-key and Cloudflare-token secrets, so the provider needs
-# auth. BW_ACCESS_TOKEN is the `infra` CI machine account's access token
-# (read/write on the `infra` Project — the same account CI uses); the org
-# UUID and the `infra` Project UUID come from Bitwarden's UI. NOTE the
-# prefix: the provider reads BW_*; the `bws` CLI reads BWS_* — the vend
-# workflow's separate Vending account token is never needed locally.
-export BW_ACCESS_TOKEN=
+# Bitwarden identifiers the provider needs — not secrets, so they stay here
+# rather than in the Keychain fetch. NOTE the prefix: the provider reads BW_*;
+# the `bws` CLI reads BWS_* — the wrapper sets both from the Keychain token.
 export BW_ORGANIZATION_ID=
 export TF_VAR_bws_infra_project_id=
 
 # Cloudflare provider (#7, epic #6) — a least-privilege API token the
-# `cloudflare` provider reads directly for managing the R2 state bucket
+# `cloudflare` provider reads directly, for managing the R2 state bucket
 # (#8) and DNS (#9). Create it at Cloudflare dashboard → My Profile → API
-# Tokens → Create Token (custom), with permission groups: Zone → Zone →
-# Read, Zone → DNS → Edit, and Account → Workers R2 Storage → Edit; scope
-# Zone Resources to the managed zones. This is a Cloudflare API *bearer*
-# token — NOT the R2 *S3* token above (R2_STORAGE_TOKEN, R2's separate
-# access-key flow); they are two different credentials. The same value is
-# also declared in Bitwarden (cloudflare.tf); #59 folds this local copy
-# into the `bws`-fetch sweep so it stops living in two places.
+# Tokens → Create Token (custom): Zone → Zone → Read, Zone → DNS → Edit,
+# Account → Workers R2 Storage → Edit; scope Zone Resources to the managed
+# zones. This is a Cloudflare API *bearer* token, distinct from the R2 *S3*
+# credentials the state backend uses (those are Keychain-fetched now). Stays
+# here for now — no cloudflare resources exist yet, so it's unused; #8/#9 fold
+# it into the Keychain fetch when they wire the first resource.
 export CLOUDFLARE_API_TOKEN=

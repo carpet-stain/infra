@@ -120,45 +120,58 @@ against later.
   boundary; the free tier caps at three, so there's no headroom. Capture each
   account's access token.
 - **In `infra`, create the secrets** and note each UUID: `GH_APP_PRIVATE_KEY`
-  (paste the `.pem` from step 4), and `CLOUDFLARE_API_TOKEN` (leave empty
-  until #7 issues it).
+  (paste the `.pem` from step 4), `CLOUDFLARE_API_TOKEN` (leave empty until #7
+  issues it), and the backend credentials CI and local fetch at runtime (#59,
+  ADR-0009) — `TF_STATE_PASSPHRASE`, `R2_ACCOUNT_ID`, the **Object Read only**
+  pair `R2_PLAN_ACCESS_KEY_ID`/`R2_PLAN_STORAGE_TOKEN`, and the read/write pair
+  `R2_APPLY_ACCESS_KEY_ID`/`R2_APPLY_STORAGE_TOKEN`. ⚠ An R2 token _value_ is
+  the raw token, not Cloudflare's pre-hashed Secret Access Key — the consumers
+  `sha256` it (ADR-0002); a key id and its token must come from the same R2
+  token.
 - **In `vended-tokens`, create one secret** (e.g. `LOCAL_GH_TOKEN`) with a
   throwaway placeholder value — `vend-token.yml` overwrites it each run. Note
   its UUID.
-- **Put the CI account's credentials in `.envrc.local`:** `BW_ACCESS_TOKEN`
-  (the CI account's token), `BW_ORGANIZATION_ID` (the Org UUID), and
-  `TF_VAR_bws_infra_project_id` (the `infra` Project UUID).
+- **Store the CI account's token in the login Keychain, gated** (#59) — this is
+  what local `just tofu` / `tofu-apply` fetch the backend secrets with:
+  `security add-generic-password -s infra-bws -a "$USER" -w` (paste the token;
+  omitting `-A` is deliberate, so each read prompts). Put the two non-secret
+  identifiers in `.envrc.local`: `BW_ORGANIZATION_ID` and
+  `TF_VAR_bws_infra_project_id` (the routine `GH_TOKEN` from step 2 stays there
+  too). Needs the `bws` CLI installed locally.
 - **Adopt the two `infra` secrets into tofu** (existence, never value): add a
   temporary `import` block for each (`bitwarden-secrets_secret.app_private_key`
   and `.cloudflare_api_token`, id = the UUID), `just tofu-apply` once, then
   delete the spent `import` blocks (the repo's adopt-then-delete convention).
   The values are dynamic — set in Bitwarden's UI, never in config.
 
-## 7. Seed the remaining CI secrets
+## 7. Seed CI's native credentials
 
-All under the elevated session — AGENTS.md's three "CI secrets" tables have
-the full purpose of each:
+CI holds almost nothing native (#59, ADR-0009): three machine-account secrets,
+then variables holding the Bitwarden UUIDs it fetches everything else by. All
+under the elevated session; AGENTS.md's "CI secrets and variables" section has
+the full purpose of each.
 
 ```sh
-env -u GH_TOKEN -u GITHUB_TOKEN gh secret set GH_TOKEN                   # copy of the routine PAT
-env -u GH_TOKEN -u GITHUB_TOKEN gh secret set TF_STATE_PASSPHRASE         # same value as .envrc.local
-env -u GH_TOKEN -u GITHUB_TOKEN gh secret set R2_ACCOUNT_ID               # same value as .envrc.local
-env -u GH_TOKEN -u GITHUB_TOKEN gh secret set R2_PLAN_ACCESS_KEY_ID       # NEW token, Object Read only
-env -u GH_TOKEN -u GITHUB_TOKEN gh secret set R2_PLAN_STORAGE_TOKEN       # same NEW read-only token
-env -u GH_TOKEN -u GITHUB_TOKEN gh secret set R2_APPLY_ACCESS_KEY_ID      # copy of .envrc.local's R2 token
-env -u GH_TOKEN -u GITHUB_TOKEN gh secret set R2_APPLY_STORAGE_TOKEN      # copy of .envrc.local's R2 token
 env -u GH_TOKEN -u GITHUB_TOKEN gh secret set BWS_ACCESS_TOKEN            # CI machine account token (step 6)
 env -u GH_TOKEN -u GITHUB_TOKEN gh secret set BWS_ORGANIZATION_ID         # Bitwarden Org UUID
 env -u GH_TOKEN -u GITHUB_TOKEN gh secret set BWS_VENDING_ACCESS_TOKEN    # Vending machine account token
-env -u GH_TOKEN -u GITHUB_TOKEN gh variable set BWS_INFRA_PROJECT_ID      # infra Project UUID
-env -u GH_TOKEN -u GITHUB_TOKEN gh variable set BWS_APP_KEY_SECRET_ID     # GH_APP_PRIVATE_KEY secret UUID
-env -u GH_TOKEN -u GITHUB_TOKEN gh variable set BWS_VENDED_SECRET_ID      # vended-tokens secret UUID
+
+env -u GH_TOKEN -u GITHUB_TOKEN gh variable set BWS_INFRA_PROJECT_ID          # infra Project UUID
+env -u GH_TOKEN -u GITHUB_TOKEN gh variable set BWS_APP_KEY_SECRET_ID         # GH_APP_PRIVATE_KEY secret UUID
+env -u GH_TOKEN -u GITHUB_TOKEN gh variable set BWS_PASSPHRASE_SECRET_ID      # TF_STATE_PASSPHRASE secret UUID
+env -u GH_TOKEN -u GITHUB_TOKEN gh variable set BWS_R2_ACCOUNT_SECRET_ID      # R2_ACCOUNT_ID secret UUID
+env -u GH_TOKEN -u GITHUB_TOKEN gh variable set BWS_R2_PLAN_KEY_SECRET_ID     # R2_PLAN_ACCESS_KEY_ID secret UUID
+env -u GH_TOKEN -u GITHUB_TOKEN gh variable set BWS_R2_PLAN_TOKEN_SECRET_ID   # R2_PLAN_STORAGE_TOKEN secret UUID
+env -u GH_TOKEN -u GITHUB_TOKEN gh variable set BWS_R2_APPLY_KEY_SECRET_ID    # R2_APPLY_ACCESS_KEY_ID secret UUID
+env -u GH_TOKEN -u GITHUB_TOKEN gh variable set BWS_R2_APPLY_TOKEN_SECRET_ID  # R2_APPLY_STORAGE_TOKEN secret UUID
+env -u GH_TOKEN -u GITHUB_TOKEN gh variable set BWS_VENDED_SECRET_ID          # vended-tokens secret UUID
+env -u GH_TOKEN -u GITHUB_TOKEN gh variable set GH_APP_CLIENT_ID              # App client id (step 5, if not already set)
 ```
 
-The plan job's R2 read-only token and the three Bitwarden machine-account
-tokens are the genuinely new credentials here; the rest are values you
-already have. The three `BWS_*` UUIDs are variables, not secrets — they
-identify a Project or secret, they don't grant anything on their own.
+Only the three machine-account tokens are secret; the UUIDs are variables —
+they identify a Project or secret, they grant nothing on their own. There's no
+native `GH_TOKEN` here: the plan job mints a read-scoped App token for the
+provider instead (#59), and the routine PAT stays local-only.
 
 ## 8. Bring in the CI workflows
 

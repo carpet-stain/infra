@@ -146,19 +146,23 @@ defeats the lock's purpose.
   `github_actions_secret`, but that key moved to Bitwarden (#47, ADR-0008)
   and no `github_actions_secret`/`_variable` resource is tofu-managed
   anymore, so neither category is required now.
-- A local `tofu plan`/`apply` also reads the App-key and Cloudflare-token
-  secrets from Bitwarden, so `.envrc.local` carries the `infra` machine
-  account's `BW_ACCESS_TOKEN`, the org UUID (`BW_ORGANIZATION_ID`), and the
-  `infra` Project UUID (`TF_VAR_bws_infra_project_id`) — see the Bitwarden
-  bootstrap below and `.envrc.local.example`.
+- Run local `tofu` through `just tofu` / `just tofu-apply` only, never bare.
+  The elevated backend secrets (state passphrase, R2 read/write creds) are
+  fetched from Bitwarden at invocation by `scripts/with-infra-secrets.sh`,
+  gated behind a macOS Keychain prompt — not exported ambiently by direnv
+  (#59, ADR-0009), so a stray agent shell in this repo no longer holds them.
+  `.envrc.local` keeps only the routine `GH_TOKEN` (the github provider's
+  local read credential) and the non-secret Bitwarden identifiers
+  (`BW_ORGANIZATION_ID`, `TF_VAR_bws_infra_project_id`); the `infra`
+  machine-account token lives in the login Keychain (item `infra-bws`), added
+  without an app ACL so each read prompts. See `.envrc.local.example`.
 - Elevate explicitly only for the one action that needs admin:
   `env -u GH_TOKEN -u GITHUB_TOKEN gh ...` — both vars, since `.envrc` aliases
   `GITHUB_TOKEN` to the same scoped token, so dropping `GH_TOKEN` alone is a no-op.
-- `just tofu plan` uses the routine scoped token (read-only); `just tofu-apply`
-  needs the elevated session token (Administration scope).
-- R2 backend credentials + `TF_STATE_PASSPHRASE` live in `.envrc.local`
-  (gitignored), never committed. Losing the passphrase means re-importing, not
-  recovering (ADR-0002).
+- `just tofu plan` uses the routine `GH_TOKEN` for the github provider (read);
+  `just tofu-apply` swaps in the elevated session token (Administration) — both
+  wrapped by the Keychain-gated backend-secret fetch. Losing the passphrase
+  means re-importing, not recovering (ADR-0002); it lives in Bitwarden now.
 - A GitHub App (ADR-0004, `app.tf`) is registered and installed on every
   repo in `local.repos` for future CI-side credential delegation — both by
   hand, not tofu-managed. Installation-repository membership specifically
@@ -203,92 +207,38 @@ inactivity (ADR-0008). Local shells then loud-fail on a stale token — the
 designed degradation. Re-enable `vend-token.yml` from the Actions tab (or run
 it once via `workflow_dispatch`) to resume.
 
-### CI secrets (`tofu-plan.yml`)
+### CI secrets and variables
 
-> Concrete realization of ADR-0003's saved-plan-on-merge model for this repo.
+> Realizes #59/ADR-0009 on top of ADR-0003's saved-plan model: after the
+> migration CI holds almost nothing native — it authenticates to Bitwarden and
+> fetches the rest at runtime via `bitwarden/sm-action`.
 
-The plan-on-PR workflow (#24) needs its own mostly-read-only credential
-surface — no Administration-scoped GitHub secret reaches it. The one
-non-read-only credential is `BWS_ACCESS_TOKEN`: the CI machine account is
-read/write on `infra` (a plan only reads the two Bitwarden secrets, but the
-free-tier three-account cap means the same account does the apply-side
-writes — ADR-0008). It still can't reach `vended-tokens` at all.
+The **complete native GitHub-secret footprint** across all workflows:
 
-| Secret                  | Purpose                                                                                                                                                                                                                 |
-| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GH_TOKEN`              | The same routine scoped PAT from `.envrc.local` (Contents/PR/Actions read-write, not Administration) — the `github` provider's credential for reading live repo/label/ruleset state across every repo in `local.repos`. |
-| `TF_STATE_PASSPHRASE`   | Same value as `.envrc.local` — decrypts the R2-backed state (ADR-0002) to compute a diff.                                                                                                                               |
-| `R2_PLAN_ACCESS_KEY_ID` | Access key ID for a **new**, separate R2 API token scoped to **Object Read only** on the `tofu-state` bucket — not the human's own Read & Write token.                                                                  |
-| `R2_PLAN_STORAGE_TOKEN` | The read-only R2 token's raw value; the workflow derives the S3 secret from it the same way `.envrc` does (`sha256`).                                                                                                   |
-| `R2_ACCOUNT_ID`         | Same value as `.envrc.local` — builds the R2 S3 endpoint URL.                                                                                                                                                           |
-| `BWS_ACCESS_TOKEN`      | The `infra` CI machine account's access token — configures the `bitwarden-secrets` provider (`BW_ACCESS_TOKEN`) so a plan can refresh the App-key and Cloudflare-token secrets (ADR-0008).                              |
-| `BWS_ORGANIZATION_ID`   | The Bitwarden Organization UUID (`BW_ORGANIZATION_ID`) — Sensitive, so a secret, not a variable.                                                                                                                        |
+| Native secret              | Used by             | Purpose                                                                                                                                                                                                              |
+| -------------------------- | ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `BWS_ACCESS_TOKEN`         | plan/apply/dispatch | The `infra` CI machine account — configures the `bitwarden-secrets` provider (`BW_ACCESS_TOKEN`) and is `access_token` for every `sm-action` fetch. The one root that can't live in the store it unlocks (ADR-0008). |
+| `BWS_ORGANIZATION_ID`      | plan/apply/dispatch | Bitwarden Org UUID (`BW_ORGANIZATION_ID`) — Sensitive, so a secret.                                                                                                                                                  |
+| `BWS_VENDING_ACCESS_TOKEN` | vend                | The distinct Vending machine account (read `infra`, read/write `vended-tokens`) — never the CI account, so the vended path can't reach CI's write grant on `infra`.                                                  |
 
-The `infra` Project UUID rides along as the **variable** `BWS_INFRA_PROJECT_ID`
-(`TF_VAR_bws_infra_project_id`) — not secret, just which Project to file
-under. These can't be tofu-managed (a repo can't provision its own CI's first
-credentials via its own CI) — seed them once via the elevated session:
+Everything else is **fetched from the `infra` Project at runtime**, keyed by a
+non-secret **variable** holding its Bitwarden UUID:
 
-```sh
-env -u GH_TOKEN -u GITHUB_TOKEN gh secret set GH_TOKEN
-env -u GH_TOKEN -u GITHUB_TOKEN gh secret set TF_STATE_PASSPHRASE
-env -u GH_TOKEN -u GITHUB_TOKEN gh secret set R2_PLAN_ACCESS_KEY_ID
-env -u GH_TOKEN -u GITHUB_TOKEN gh secret set R2_PLAN_STORAGE_TOKEN
-env -u GH_TOKEN -u GITHUB_TOKEN gh secret set R2_ACCOUNT_ID
-env -u GH_TOKEN -u GITHUB_TOKEN gh secret set BWS_ACCESS_TOKEN
-env -u GH_TOKEN -u GITHUB_TOKEN gh secret set BWS_ORGANIZATION_ID
-env -u GH_TOKEN -u GITHUB_TOKEN gh variable set BWS_INFRA_PROJECT_ID
-```
+- Fetched by `sm-action`: `TF_STATE_PASSPHRASE`, `R2_ACCOUNT_ID`, the R2 pair
+  (plan reads `R2_PLAN_*` — a separate **Object Read only** token; apply and
+  dispatch read the read/write `R2_APPLY_*`), and `GH_APP_PRIVATE_KEY`. Apply
+  and dispatch mint an elevated App token from the key; the plan job mints an
+  `administration:read`+`issues:read` token for the provider (the routine PAT
+  is retired, #59) and posts its PR comment via the ephemeral `github.token`.
+- UUID **variables** (not secret): `BWS_INFRA_PROJECT_ID`,
+  `BWS_APP_KEY_SECRET_ID`, `BWS_PASSPHRASE_SECRET_ID`, `BWS_R2_ACCOUNT_SECRET_ID`,
+  `BWS_R2_{PLAN,APPLY}_{KEY,TOKEN}_SECRET_ID`, `BWS_VENDED_SECRET_ID`, and
+  `GH_APP_CLIENT_ID`.
 
-### CI secrets (`tofu-apply.yml`)
-
-> Concrete realization of ADR-0003's saved-plan-on-merge model, apply half,
-> and ADR-0004's App-token delegation, for this repo.
-
-The apply-on-merge workflow (#25) writes state, so its R2 credential is
-Read & Write, unlike the plan job's deliberately read-only one — but the
-`github` provider's own write access comes from a per-job App-minted token
-(#32's `mint-app-token`), not a standing secret:
-
-| Secret                   | Purpose                                                                                                                                                   |
-| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `R2_APPLY_ACCESS_KEY_ID` | Access key ID for the same Read & Write R2 API token already in `.envrc.local` — apply genuinely needs write, no further scoping down is meaningful here. |
-| `R2_APPLY_STORAGE_TOKEN` | That token's raw value; derives the S3 secret the same way `.envrc` does (`sha256`).                                                                      |
-
-`TF_STATE_PASSPHRASE`, `R2_ACCOUNT_ID`, `BWS_ACCESS_TOKEN`,
-`BWS_ORGANIZATION_ID`, and the `BWS_INFRA_PROJECT_ID` variable are shared with
-the plan job's secrets above, not duplicated — apply reuses the CI machine
-account both to configure the provider and to read the App key via
-`bitwarden/sm-action` (the private key is `vars.BWS_APP_KEY_SECRET_ID`) before
-minting. Seed only the two R2 apply secrets here:
-
-```sh
-env -u GH_TOKEN -u GITHUB_TOKEN gh secret set R2_APPLY_ACCESS_KEY_ID
-env -u GH_TOKEN -u GITHUB_TOKEN gh secret set R2_APPLY_STORAGE_TOKEN
-env -u GH_TOKEN -u GITHUB_TOKEN gh variable set BWS_APP_KEY_SECRET_ID
-```
-
-### CI secrets (`vend-token.yml`)
-
-> Concrete realization of ADR-0008's token-vending half (#51) for this repo.
-
-The scheduled vend workflow uses the **Vending** machine account (read on
-`infra` for the App key, read/write on `vended-tokens` to publish), never the
-CI account — the two must stay distinct so the vended path can't reach the CI
-account's write grant on `infra`. It needs zero `GITHUB_TOKEN` permissions
-(`permissions: {}`), so no GitHub-scoped secret at all:
-
-| Secret / variable             | Purpose                                                                                                                 |
-| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| `BWS_VENDING_ACCESS_TOKEN`    | The Vending machine account's token — `access_token` for `sm-action`'s read and `BWS_ACCESS_TOKEN` for the `bws` write. |
-| `BWS_VENDED_SECRET_ID` (var)  | UUID of the `vended-tokens` JSON secret the workflow overwrites each run.                                               |
-| `BWS_APP_KEY_SECRET_ID` (var) | Shared with the apply job above — the App-key secret's UUID in `infra`.                                                 |
-| `GH_APP_CLIENT_ID` (var)      | Shared with the apply job — the App's client ID (not secret).                                                           |
-
-```sh
-env -u GH_TOKEN -u GITHUB_TOKEN gh secret set BWS_VENDING_ACCESS_TOKEN
-env -u GH_TOKEN -u GITHUB_TOKEN gh variable set BWS_VENDED_SECRET_ID
-```
+Seed the three native secrets and the variables once via the elevated session
+(`gh secret set` / `gh variable set`); the Bitwarden secrets they reference and
+the from-zero order live in `docs/BOOTSTRAP.md`. These can't be tofu-managed —
+a repo can't provision its own CI's first credentials via its own CI.
 
 ## Terraform / OpenTofu conventions
 
@@ -321,9 +271,10 @@ env -u GH_TOKEN -u GITHUB_TOKEN gh variable set BWS_VENDED_SECRET_ID
 - **State is a secret store.** The GitHub provider writes attribute values into
   state verbatim, so state is secret material (ADR-0002): remote R2 backend with
   locking; **client-side encryption enforced** via the `TF_ENCRYPTION` block
-  `.envrc` builds from `TF_STATE_PASSPHRASE`, key material in the environment
-  only. Never commit state, plans, or `.terraform/` (all gitignored); the
-  lockfile _is_ committed.
+  `scripts/with-infra-secrets.sh` builds at invocation from the
+  Bitwarden-fetched `TF_STATE_PASSPHRASE` (#59, ADR-0009), key material in the
+  environment only. Never commit state, plans, or `.terraform/` (all
+  gitignored); the lockfile _is_ committed.
 - **Refactor declaratively.** `moved {}` / `removed {}` / `import {}` blocks,
   reviewable in the plan; adopting a repo or resolving a label collision uses a
   temporary `import` block (see README's "Adding a repo"), deleted once applied.

@@ -11,9 +11,11 @@ moved here (its ADR-0022/0024 record the founding decisions and the move).
 Tools come from Homebrew: `tenv` (installs the OpenTofu version
 `required_version` pins), `tflint` (via `terraform-linters/tap`), `trivy`,
 `lefthook`, `just`, `direnv`. Copy `.envrc.local.example` to `.envrc.local`
-and fill it (GitHub scoped token + R2 backend credentials + the state
-passphrase + the Bitwarden machine-account token and Project id), then
-`direnv allow` and `lefthook install`.
+and fill it (GitHub scoped token + the Bitwarden org/Project ids), store the
+`infra` Bitwarden machine-account token in the login Keychain (gated — #59,
+ADR-0009), then `direnv allow` and `lefthook install`. Local `tofu` runs via
+`just`, which fetches the state passphrase + R2 creds from Bitwarden at
+invocation.
 
 This assumes the account's R2 bucket, GitHub App, Bitwarden store, and CI
 secrets already exist. Setting all of that up from nothing — a fresh GitHub account, no

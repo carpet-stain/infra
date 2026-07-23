@@ -11,3 +11,7 @@
 *.tfplan
 crash.log
 crash.*.log
+
+# The bitwarden-secrets provider writes an encrypted local state cache here
+# (ADR-0008/0009) — secret-shaped material, same never-commit rule as state.
+.bw-provider-state

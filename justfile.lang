@@ -2,11 +2,15 @@
 # one-off (ADR-0002; dotfiles ADR-0024). The config lives at the repo root,
 # so tenv resolves the runtime from required_version in the cwd.
 
-# Run OpenTofu under the routine scoped token (init, plan, state, ...).
+# Run OpenTofu (init, plan, state, ...). The backend passphrase + R2 creds are
+# fetched from Bitwarden at invocation via the Keychain-gated wrapper (#59,
+# ADR-0009) — expect a Keychain "Allow" prompt — not exported ambiently.
+# GITHUB_TOKEN comes from the routine GH_TOKEN alias (.envrc), unchanged.
 tofu *args:
-    tofu {{ args }}
+    scripts/with-infra-secrets.sh tofu {{ args }}
 
 # Apply under the elevated session token — mutations need Administration,
-# which the routine GH_TOKEN deliberately lacks.
+# which the routine GH_TOKEN deliberately lacks — with the same
+# Keychain-gated backend-secret fetch wrapped around it.
 tofu-apply *args:
-    GITHUB_TOKEN=$(env -u GH_TOKEN -u GITHUB_TOKEN gh auth token) tofu apply {{ args }}
+    scripts/with-infra-secrets.sh env GITHUB_TOKEN="$(env -u GH_TOKEN -u GITHUB_TOKEN gh auth token)" tofu apply {{ args }}
