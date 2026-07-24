@@ -50,3 +50,7 @@ The contributor guide — workflow, commit rules, tooling, credentials — lives
 present yet). Architecture decisions live in
 [`docs/adr/`](docs/adr/README.md). This README is the human front door and
 points at those homes rather than restating them.
+
+Giving a **different** repo a secret from this account's Bitwarden store —
+which Project it belongs in, which credential it gets, how to fetch it at
+runtime — is [`docs/CONSUMING-SECRETS.md`](docs/CONSUMING-SECRETS.md).
