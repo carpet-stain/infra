@@ -131,6 +131,33 @@ only for `infra`'s *cross-repo or elevated* (`administration`-scope) work. Don't
 App-minted token for routine same-repo automation in any managed repo — check whether
 `GITHUB_TOKEN` already covers it first.
 
+**#73 (spike, credentials) — CLOSED 2026-07-25 via ADR-0008 amendment, PR #77.** Resolved where
+two new secrets live now that the free-tier 3-Machine-Account cap (ADR-0008) is spent: (1)
+dotfiles' own `GH_TOKEN` retires onto the vended token path — audited clean, `Actions` was the
+only scope gap and it's a single human-invoked step with a documented fallback, so the vended
+token isn't widened; (2) the LLM-API-key store (for `dotfiles`#330/#370's shipped PR-reviewer and
+the unbuilt `dotfiles`#399/#400 scratch-terminal) is **deferred** until a local (non-CI) consumer
+exists — the shipped reviewer stays a native Actions secret, the correct home for single-repo CI.
+Also corrected a stale ADR-0008 consequence: merging the two CI-side Machine Accounts (originally
+flagged as the fallback if a 4th account were ever needed) would, post-ADR-0009, hand the
+unattended vend cron write-`infra` — the actual binding constraint is accounts (0 free), not
+Projects (1 of 3 free), so a new secret class gets a new Project read by an existing account, no
+merge. Follow-ups tracked in `dotfiles`#377 (the retire-`GH_TOKEN` migration) and
+`dotfiles`#399/#400 (LLM key plan once that tool exists).
+
+**#73's case (1) sharpens #76's stakes — noted on #76, 2026-07-25.** #76 (`fix(ci): vend-token.yml's
+schedule cadence doesn't guarantee a fresh token`, still open, `priority: high`) documents that the
+vend cron's real cadence (70-95 min gaps, GitHub throttles scheduled runs on public repos) routinely
+outlives the App token's 1h TTL — the published vended token is often already expired. Before #73,
+that only blocked `dotfiles`#377/#403 as a *read* consumer. #73's case (1) now commits dotfiles to
+*retiring its own working PAT* onto that same unreliable path, so #76 gates that migration outright,
+not just the read-consumer. Recorded on #76 via a comment plus a native cross-repo `blocking` link
+to `carpet-stain/dotfiles#377` (confirmed working — see [[backlog-conventions]]'s linking section).
+#76's fix should land as ADR-0008's *third* block (after the original decision and #73's amendment)
+and correct the #73 amendment's liveness-coupling line, which currently only names the 60-day
+scheduled-workflow auto-disable as the risk — #76's cadence gap is the more acute, routine one and
+isn't mentioned there yet.
+
 See [[backlog-conventions]] and [[label-taxonomy]].
 
 **#22 (enhancement, priority medium) — import `golden-ratio-dual-gate` into `local.repos`,

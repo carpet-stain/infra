@@ -41,6 +41,14 @@ create --blocked-by <N>` (or `gh issue edit --add-blocked-by <N>` / `--remove-bl
 the fact) sets the native `blocked-by`/`blocking` relationship GitHub now renders in
 `gh issue view`.
 
+**Cross-repo blocking links work (confirmed 2026-07-25, infra#76 → dotfiles#377):**
+`--add-blocked-by`/`--add-blocking` accept a full issue URL, not just a same-repo number —
+`gh issue edit 76 --repo carpet-stain/infra --add-blocking
+"https://github.com/carpet-stain/dotfiles/issues/377"` set a real `blocking:
+carpet-stain/dotfiles#377` link, no elevation needed, same routine scoped token. Don't assume
+same-repo-only and default to a comment-only cross-ref — try the native link first for any
+dependency crossing infra↔dotfiles.
+
 **Plan-review finding vs. an already-accepted ADR — confirmed pattern (2026-07-19, epic #28).**
 If a plan-review pass surfaces a real gap in an ADR that's already accepted, mid-implementation:
 don't let the implementation issue silently diverge from what the ADR says. Revert the issue's
