@@ -23,7 +23,7 @@ jobs:
     # re-triggered for real at ready_for_review.
     if: github.event.pull_request.draft == false
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-node@v4
         with:
