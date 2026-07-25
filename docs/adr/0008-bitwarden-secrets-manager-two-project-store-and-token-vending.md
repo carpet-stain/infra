@@ -150,7 +150,9 @@ Free-tier ceilings are load-bearing, not incidental:
   three** — zero headroom. If a fourth consumer ever appears, the clean
   consolidation is merging the two CI-side accounts (one account with grants
   on both Projects): the boundary that must stay real is CI-vs-local, not the
-  split between CI consumers.
+  split between CI consumers. **(Stale — do not follow. Post-ADR-0009 this
+  merge would hand the unattended vend cron write-`infra`; the corrected path
+  is a new Project read by an existing account — see the #73 amendment below.)**
 - **`infra` staying public keeps Actions minutes unmetered.** The vend
   workflow's cadence alone (~48–72 runs/day) would consume the entire
   private-repo free allotment; "infra stays public" is a load-bearing
@@ -165,4 +167,61 @@ live grants against this ADR's table is a manual, periodic check — the price
 of the provider having no resource for them. Revisit the whole structure if
 Bitwarden adds per-secret ACLs (the two-Project split's entire reason to
 exist), or if a paid tier lifts the three-account cap and a genuine fourth
-consumer wants its own boundary.
+consumer wants its own boundary. (Revisited in #73 — see the amendment below.)
+
+## Amendment — #73 (2026-07-25): the third secret class
+
+Spike #73 hit the revisit trigger named above ("a genuine fourth consumer").
+It resolved two questions and corrected one piece of the guidance above.
+
+**(1) dotfiles' own `GH_TOKEN` retires onto the vended path.** dotfiles' last
+standing PAT (Contents/PRs/Actions/Issues, ambient in `.envrc.local`) is
+retired for the vended token (`dotfiles`#377) like every other consumer. The
+only scope the vended token lacks is **Actions**, exercised at a single
+human-invoked step (`gh workflow run release-prepare.yml`) that already has a
+documented by-hand fallback — so the swap is clean and the vended token is
+**not** widened. Adding `actions: write` to the most broadly-distributed,
+ambient token to serve one convenience is the wrong trade; the operator
+elevates for that one step or uses the fallback, the same pattern dotfiles
+already uses for branch-protection bootstrap. Consequence to name: dotfiles'
+own routine `gh` work now inherits the vend cron's liveness — if vending
+stalls (the 60-day auto-disable), dotfiles loud-fails too, the same designed
+degradation local shells already have.
+
+**(2) A new secret _class_ (third-party LLM API key) — store adoption
+deferred until its local consumer exists.** Two pulls: the shipped PR-reviewer
+(`dotfiles`#330/#370) and the unbuilt scratch-terminal (`dotfiles`#399/#400).
+The reviewer is **CI-only** — its key stays a native Actions secret, the
+correct home for a single-repo CI secret, not the ad-hoc anti-pattern
+`CONSUMING-SECRETS.md` targets (that section is about local/cross-repo sprawl,
+not a workflow holding its own secret). The scratch-terminal is the only
+consumer that would need the store's local reach, and it isn't built — so no
+Project, account, or grant changes now. Provisioning for an unbuilt consumer
+is guessing at its usage; decide when it exists.
+
+**The "merge the two CI-side accounts" guidance above is stale — do not
+follow it.** It predates ADR-0009, which reused the CI account as the local
+Keychain-gated credential. Merging CI+Vending would give the unattended
+`vend-token.yml` cron **read/write on `infra`** (today: read only), so a
+vend-cron compromise could _overwrite_ crown jewels (swap the App key, plant a
+backdoor) — contradicting the invariant AGENTS.md states outright: the Vending
+account is "never the CI account, so the vended path can't reach CI's write
+grant on `infra`." The corrected path: **the binding constraint is machine
+accounts (0 free), not Projects (1 of 3 free).** A new secret class gets a
+**new Project in the free slot, read by an _existing_ account** — no merge, no
+new account. The account budget binds only if a secret genuinely needs its own
+account boundary; that trade-off (reuse-an-existing-account-and-gate vs. spend
+the last slot vs. the paid tier — Secrets Manager Teams, ~$72/yr, which also
+converts the free personal Org to a paid subscription) is re-evaluated against
+the real consumer, not pre-committed here.
+
+For the LLM key specifically, that sub-question stays open by design: it's
+billable-but-not-crown-jewel, fitting neither the ambient `Local` account (a
+grant there exposes a billing key to every agent shell) nor the crown-jewel
+`CI` account cleanly. When the scratch-terminal is built, decide its account
+and gate its fetch (treat billing exposure as elevation — a gated wrapper, not
+an ambient `.envrc.local` export) with its actual usage in hand.
+
+Follow-ups: `dotfiles`#377 (retire `GH_TOKEN`, update its Non-goals);
+`dotfiles`#399/#400 (the LLM key's plan once the tool exists). No infra
+grant/Project change falls out of this now — the store is unchanged.
