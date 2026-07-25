@@ -26,3 +26,9 @@ canonical `local.labels` map), `versions.tf`, `docs/adr/` (ADRs; created only vi
 
 Apply model: `just tofu plan` uses a routine read-only scoped token; `just tofu-apply` needs an
 elevated session token with Administration scope. See [[label-taxonomy]] and [[backlog-conventions]].
+
+A single `tofu apply` provisions repo creation, the full label set, AND branch protection
+together for every repo in `local.repos` — don't assume a freshly-added repo still needs
+dotfiles' manual label/protection scripts; check live state first (`gh api
+repos/<repo>/rulesets`, `gh label list --repo <repo>`). (Relocated from dotfiles' store per
+dotfiles ADR-0033's residency rule.)
