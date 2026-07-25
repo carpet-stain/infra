@@ -31,7 +31,7 @@ jobs:
       - name: Install lefthook
         run: npm install --global lefthook
 
-      - uses: extractions/setup-just@v3
+      - uses: extractions/setup-just@v4
 
       # Pinned release binaries, no floating actions: trivy's Feb–Mar 2026
       # supply-chain incident (hijacked trivy-action tags) is why these are
