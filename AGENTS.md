@@ -198,9 +198,13 @@ can reach `infra`, and the CI and Local accounts share no Project.
 | Local           | —          | read            | a local/agent shell (`dotfiles`#377)              |
 
 The free tier caps at **three** Machine Accounts, so this uses the entire
-budget — no headroom. A fourth consumer means merging the two CI-side
-accounts (grants on both Projects); the boundary that must stay real is
-CI-vs-local, not the split between CI consumers (ADR-0008).
+budget — no headroom. The binding constraint is accounts, not Projects (2 of 3
+Projects used). A new secret class gets a **new Project in the free slot, read
+by an existing account** — not a merge of the CI-side accounts. That merge was
+ADR-0008's original guidance and is now stale: post-ADR-0009 the CI account is
+also the local Keychain credential, so merging would hand the unattended vend
+cron write-`infra`. Spend the last account slot (or the paid tier) only if a
+secret genuinely needs its own account boundary. See ADR-0008's #73 amendment.
 
 **If vending stops:** scheduled workflows auto-disable after 60 days of repo
 inactivity (ADR-0008). Local shells then loud-fail on a stale token — the
