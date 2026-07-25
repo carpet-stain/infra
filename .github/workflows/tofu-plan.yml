@@ -145,7 +145,7 @@ jobs:
       # apply workflow's escape hatch (#26) covers a missing artifact by
       # design — just friction worth reducing. See AGENTS.md's Branch & PR
       # model for the stale-artifact runbook pointer.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: tfplan-${{ steps.plan.outputs.tree_sha }}
           path: tfplan
