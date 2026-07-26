@@ -10,10 +10,9 @@ name: Tofu drift
 # tofu-apply.yml (ADR-0003's saved-plan model is unchanged).
 on:
   schedule:
-    # Every 6 hours, off the top of the hour to avoid GitHub's documented
-    # scheduling congestion at :00. Tune here only — nothing else derives
-    # from this interval.
-    - cron: "13 */6 * * *"
+    # Weekly, 03:00 UTC every Sunday. Tune here only — nothing else
+    # derives from this interval.
+    - cron: "0 3 * * 0"
   workflow_dispatch: {}
 
 permissions:
