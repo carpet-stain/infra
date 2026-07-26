@@ -108,6 +108,37 @@ jobs:
             merge_commit_title, merge_commit_message
           }'
 
+      # TEMPORARY — diagnostic for #88, remove before merge. Same probe,
+      # but with contents:read added (still no write scope anywhere) — a
+      # candidate minimal-read-permission fix if it unlocks the fields.
+      - name: DIAGNOSTIC — mint administration:read+contents:read token
+        id: app-token-contents-read
+        uses: ./.github/actions/mint-app-token
+        with:
+          client-id: ${{ vars.GH_APP_CLIENT_ID }}
+          private-key: ${{ steps.bw-backend.outputs.GH_APP_PRIVATE_KEY }}
+          repositories: dotfiles,infra,project-starter-template
+          permission-administration: read
+          permission-issues: read
+          permission-contents: read
+
+      - name: DIAGNOSTIC — raw GET /repos with administration:read+contents:read
+        env:
+          GH_TOKEN: ${{ steps.app-token-contents-read.outputs.token }}
+        run: |
+          gh api repos/carpet-stain/infra --jq '{
+            has_allow_auto_merge: has("allow_auto_merge"),
+            has_allow_rebase_merge: has("allow_rebase_merge"),
+            has_allow_merge_commit: has("allow_merge_commit"),
+            has_allow_squash_merge: has("allow_squash_merge"),
+            has_delete_branch_on_merge: has("delete_branch_on_merge"),
+            has_merge_commit_title: has("merge_commit_title"),
+            has_merge_commit_message: has("merge_commit_message"),
+            allow_auto_merge, allow_rebase_merge, allow_merge_commit,
+            allow_squash_merge, delete_branch_on_merge,
+            merge_commit_title, merge_commit_message
+          }'
+
       # Mirrors .envrc's own derivation exactly (ADR-0002): the R2 S3 secret
       # is sha256(storage token), the endpoint carries the account ID, and
       # TF_ENCRYPTION is built from the shared passphrase via plain bash
