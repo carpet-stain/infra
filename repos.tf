@@ -1,7 +1,8 @@
 # Config-as-data: routine changes happen here, not in main.tf's resources.
 # One entry per managed repo; the canonical label set applies to every
-# managed repo. Governance invariants (rebase-merge only, branch cleanup)
-# are fixed in main.tf, not per-repo data — see ADR-0011/ADR-0022.
+# managed repo, except `infra_labels` below, which is repo-specific (#13).
+# Governance invariants (rebase-merge only, branch cleanup) are fixed in
+# main.tf, not per-repo data — see ADR-0011/ADR-0022.
 
 locals {
   repos = {
@@ -88,5 +89,13 @@ locals {
     "tofu-drift"          = { color = "d73a4a", description = "Auto-managed by tofu-drift.yml (#87) — open while main has drift, closes once a plan is clean" }
     "upstream-review"     = { color = "5319E7", description = "Ideas from the z0rc/dotfiles fork worth considering" }
     "wontfix"             = { color = "ffffff", description = "This will not be worked on" }
+  }
+
+  # Labels scoped to a single repo — main.tf's github_issue_label.infra_only
+  # applies these instead of the cross-repo for_each above. Cloudflare's
+  # account surface (provider, zones, DNS, R2) is infra-only work; nothing
+  # in dotfiles or project-starter-template will ever carry this theme.
+  infra_labels = {
+    "theme: cloudflare" = { color = "F38020", description = "Cloudflare account surface — provider, zones, DNS, R2, stores" }
   }
 }

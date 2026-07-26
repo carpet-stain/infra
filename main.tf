@@ -88,6 +88,25 @@ resource "github_issue_label" "this" {
   }
 }
 
+# Repo-specific labels (#13) — deliberately outside the canonical for_each
+# above, since local.infra_labels shouldn't land on every managed repo.
+# One-off for now, not a general per-repo-scoping mechanism.
+resource "github_issue_label" "infra_only" {
+  for_each = local.infra_labels
+
+  repository  = github_repository.this["infra"].name
+  name        = each.key
+  color       = each.value.color
+  description = each.value.description
+
+  lifecycle {
+    precondition {
+      condition     = length(each.value.description) <= 100
+      error_message = "GitHub caps label descriptions at 100 characters: \"${each.key}\" is ${length(each.value.description)}."
+    }
+  }
+}
+
 # The `protect main` ruleset on every managed repo: rebase-merge only, no
 # deletion or force-push, required PR checks with strict:true (see the
 # required_status_checks block below for why). Requires GitHub Pro on
