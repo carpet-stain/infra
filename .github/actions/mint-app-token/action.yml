@@ -24,6 +24,13 @@ inputs:
   repositories:
     description: Comma or newline-separated repos the token can access.
     required: true
+  permission-actions:
+    description: >
+      Actions permission level for the minted token (e.g. "write") —
+      workflow runs and dispatch (`gh run view`/`gh workflow run`). Leave
+      unset for no Actions access.
+    required: false
+    default: ""
   permission-administration:
     description: >
       Administration permission level for the minted token (e.g. "write")
@@ -89,6 +96,7 @@ runs:
         client-id: ${{ inputs.client-id }}
         private-key: ${{ inputs.private-key }}
         repositories: ${{ inputs.repositories }}
+        permission-actions: ${{ inputs.permission-actions }}
         permission-administration: ${{ inputs.permission-administration }}
         permission-contents: ${{ inputs.permission-contents }}
         permission-issues: ${{ inputs.permission-issues }}
