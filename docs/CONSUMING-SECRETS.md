@@ -14,10 +14,13 @@ I fetch it, who do I ask."
 One thing: **read access to the vended GitHub token** in the `vended-tokens`
 Project. That token is a narrowly-scoped, rotating credential
 (`{contents, issues, pull_requests}: write`, no `administration`, over the
-managed repos except `infra` itself), republished every 20 minutes by
-`vend-token.yml`. It exists precisely so a local or agent shell in another repo
-can do routine cross-repo GitHub work without ever touching the App's raw
-private key (ADR-0008; the live consumer is `dotfiles`#377).
+managed repos except `infra` itself), republished every 5 minutes by
+`vend-token.yml` on a best-effort basis — GitHub's `schedule:` trigger can be
+delayed on public repos, so this is not a hard freshness guarantee (ADR-0008's
+issue-76 amendment; issue #98 tracks whether a harder guarantee is possible
+at all). It exists precisely so a local or agent shell in another repo can do
+routine cross-repo GitHub work without ever touching the App's raw private
+key (ADR-0008; the live consumer is `dotfiles`#377).
 
 It does **not** get a place to store its own arbitrary new secret. See
 [Storing a genuinely new secret](#storing-a-genuinely-new-secret) — under the
