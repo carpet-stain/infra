@@ -36,8 +36,9 @@ verbatim.
 - `variables.tf` — apply-time inputs fed via `TF_VAR_*`, never a literal in
   a committed file (currently the `infra` Bitwarden Project UUID).
 - `.github/actions/mint-app-token/` — composite action minting scoped
-  App-installation tokens for CI (#32), used by `tofu-apply.yml`,
-  `tofu-apply-dispatch.yml`, and `vend-token.yml`.
+  App-installation tokens for CI (#32), used by `tofu-plan.yml`,
+  `tofu-apply.yml`, `tofu-apply-dispatch.yml`, `tofu-drift.yml`, and
+  `vend-token.yml` (a separate, narrower repo list — see Credentials).
 - `.github/workflows/` — `tofu-plan.yml`/`tofu-apply.yml` are the
   saved-plan-on-merge pipeline (ADR-0003); `vend-token.yml` publishes a
   scoped, rotating token into Bitwarden's `vended-tokens` Project for
@@ -175,6 +176,13 @@ defeats the lock's purpose.
   endpoint for user accounts (ADR-0004's Consequences). Adding a genuinely
   new repo to `local.repos` always needs one human-run `just tofu-apply`;
   don't design automation that assumes otherwise.
+- CI's own App-token minting (`.github/actions/mint-app-token/`, consumed by
+  `tofu-plan.yml`/`tofu-apply.yml`/`tofu-apply-dispatch.yml`/`tofu-drift.yml`)
+  scopes each token to a hardcoded `repositories:` CSV, separate from
+  `local.repos` itself — a new repo needs adding to that CSV in all four
+  workflows too, or CI can read it (plan/drift) but never write to it (apply
+  403s: confirmed live when #22 adopted `golden-ratio-dual-gate` before this
+  step was done).
 
 ### Bitwarden Secrets Manager
 
