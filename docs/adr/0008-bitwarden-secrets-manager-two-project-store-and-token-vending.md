@@ -274,3 +274,64 @@ vending would need a new `actions: write`-capable grant reachable from
 local/agent shells, a security-surface question of its own not yet
 reviewed, and reshapes `dotfiles`#377's design too — genuinely open, not
 pre-decided here.
+
+## Amendment — #98 (2026-07-26): no further fix beyond #76's mitigation
+
+Spike #98 evaluated both directions #76 deferred, plus any hybrid. Both are
+rejected; #76's cron tightening stands as the accepted mitigation.
+
+**Rejected: on-demand vending** (a consumer triggers a fresh vend via
+`workflow_dispatch` when its cached token is stale, inverting the eager
+push into a pull). Every trigger mechanism checked needs write-ish reach on
+`infra` itself: `workflow_dispatch` needs `actions: write` (GitHub can't
+scope this narrower than the whole repo — there is no per-workflow grant),
+and `repository_dispatch` needs `contents: write` — the exact boundary the
+vended token's `repositories` list already excludes `infra` from, for the
+same reason ADR-0008 gave the first time (a token that can write `infra`
+can push a crafted file and open a PR against the repo holding the raw
+key). On this repo, `actions: write` is not the narrow capability its name
+suggests: `tofu-apply-dispatch.yml` is itself `workflow_dispatch`-triggerable
+and mints an App token with `permission-administration: write` over
+`dotfiles`, `infra`, and `project-starter-template` plus the state
+passphrase and R2 creds. Anything holding `actions: write` on `infra` can
+force that unattended admin-scoped apply, or trivially DoS the vend cron by
+canceling/spamming its own runs. Handing that reach to the single most
+ambiently-distributed, every-agent-shell-reachable credential is a
+crown-jewel-adjacent regression — the same class of regression #76 already
+rejected for the self-requeuing chain's `actions: write` need. Gating it
+instead behind a separate, Keychain-gated trigger credential doesn't
+rescue the idea: per ADR-0009's model, a gated fetch fails closed for
+exactly the non-interactive agent shells #76's original report named as
+being hit ("every shell entry during each gap") — so it would only fix the
+problem for an interactive human, not the case that motivated this issue.
+
+**Rejected: consumer-side staleness relocation** (move the freshness check
+from shell-entry to point-of-use, softening the fail-loud into a normal
+API error). Checked against the actual consumer before assuming this
+helps: `dotfiles`#377/#403 already deliberately chose loud failure at
+shell entry over a point-of-use 401, and says why outright — "a stale
+token... must be an obvious, loud failure at shell entry, not a `401`
+surfacing later at first `gh`/`git` use with no clear cause." #403 is
+closed, merged, and verified; its own body states "Not a dotfiles bug —
+this PR handles staleness correctly," flagging the cadence gap back to
+`infra` (the report that became #76 in the first place). Relocating the
+check would reverse a decision `dotfiles` already made, shipped, and
+verified — trading a clear, diagnosable failure for the scattered,
+cause-less 401s it explicitly designed against. Not a fix; a regression of
+someone else's already-verified design.
+
+**Accepted residual:** during a publish gap longer than the App token's 1h
+TTL, the vended token is genuinely dead and local cross-repo GitHub work is
+unavailable until the next successful vend — no consumer-side change
+conjures a live token, and only on-demand vending (rejected above) could
+have closed that gap. GitHub's `schedule:` trigger stays best-effort on
+public repos regardless of cadence, so #76's tightening (`*/20` → `*/5`)
+narrows the average gap but does not remove the residual. That residual is
+accepted, not solved. Revisit only if GitHub adds a way to scope
+`actions: write` to a single workflow (removing the finding against
+on-demand vending), the observed gap frequency or duration worsens
+materially, or a paid Bitwarden tier changes the account-budget trade-offs
+that shape the credential options considered here.
+
+No follow-up implementation issue in `infra` or `dotfiles` — this amendment
+is the deliverable #98 asked for.
