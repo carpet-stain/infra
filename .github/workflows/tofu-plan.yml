@@ -43,6 +43,14 @@ jobs:
       # The bitwarden-secrets provider (ADR-0008) configures from the
       # environment; a plan refreshes the managed secrets, which needs read
       # on `infra`.
+      #
+      # This is the one job here triggered by `pull_request`, so it's the
+      # one exposed to #89: a Dependabot-actored run (e.g. `@dependabot
+      # rebase`) draws secrets.* from the repo's Dependabot store, not
+      # Actions — both BWS_ACCESS_TOKEN and BWS_ORGANIZATION_ID have to be
+      # mirrored there too (AGENTS.md's CI secrets and variables, seeded in
+      # docs/BOOTSTRAP.md's step 7) or this step fails with "Access token is
+      # required" whenever the actor is dependabot[bot].
       BW_ACCESS_TOKEN: ${{ secrets.BWS_ACCESS_TOKEN }}
       BW_ORGANIZATION_ID: ${{ secrets.BWS_ORGANIZATION_ID }}
       TF_VAR_bws_infra_project_id: ${{ vars.BWS_INFRA_PROJECT_ID }}

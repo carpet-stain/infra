@@ -225,6 +225,15 @@ The **complete native GitHub-secret footprint** across all workflows:
 | `BWS_ORGANIZATION_ID`      | plan/apply/dispatch | Bitwarden Org UUID (`BW_ORGANIZATION_ID`) — Sensitive, so a secret.                                                                                                                                                  |
 | `BWS_VENDING_ACCESS_TOKEN` | vend                | The distinct Vending machine account (read `infra`, read/write `vended-tokens`) — never the CI account, so the vended path can't reach CI's write grant on `infra`.                                                  |
 
+`BWS_ACCESS_TOKEN` and `BWS_ORGANIZATION_ID` are **mirrored into the repo's
+Dependabot secrets store**, not just Actions (#89): a `pull_request` run
+whose actor is `dependabot[bot]` (e.g. `@dependabot rebase`) draws
+`secrets.*` from the Dependabot store instead, and `tofu-plan.yml` is the
+one workflow here that triggers on `pull_request`. `vars.*` are unaffected —
+only `secrets.*` swap stores, and only plan is exposed (apply/dispatch never
+trigger off a Dependabot-actored event). Same non-tofu-managed shape as the
+Actions copy — see below.
+
 Everything else is **fetched from the `infra` Project at runtime**, keyed by a
 non-secret **variable** holding its Bitwarden UUID:
 
@@ -239,10 +248,14 @@ non-secret **variable** holding its Bitwarden UUID:
   `BWS_R2_{PLAN,APPLY}_{KEY,TOKEN}_SECRET_ID`, `BWS_VENDED_SECRET_ID`, and
   `GH_APP_CLIENT_ID`.
 
-Seed the three native secrets and the variables once via the elevated session
-(`gh secret set` / `gh variable set`); the Bitwarden secrets they reference and
-the from-zero order live in `docs/BOOTSTRAP.md`. These can't be tofu-managed —
-a repo can't provision its own CI's first credentials via its own CI.
+Seed the three native secrets, their two-secret Dependabot mirror, and the
+variables once via the elevated session (`gh secret set` / `gh secret set
+--app dependabot` / `gh variable set`); the Bitwarden secrets they reference
+and the from-zero order live in `docs/BOOTSTRAP.md`. None of this can be
+tofu-managed — a repo can't provision its own CI's first credentials via its
+own CI, and mirroring them would mean `github_dependabot_secret` writing the
+same root credential into state a second time, for no less bootstrap-value
+reason than the Actions copy already isn't tofu-managed.
 
 ## Terraform / OpenTofu conventions
 
