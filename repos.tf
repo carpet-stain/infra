@@ -46,7 +46,7 @@ locals {
     }
 
     project-starter-template = {
-      description      = "Starter template for new Python projects with modern tooling and best practices"
+      description      = "Copier toolkit for scaffolding governed repos — git-flow base + language overlays"
       visibility       = "public"
       has_issues       = true
       has_projects     = false
@@ -54,7 +54,7 @@ locals {
       has_discussions  = false
       allow_auto_merge = true
       topics = [
-        "python",
+        "git-flow",
         "template",
         "project-template",
         "copier",
