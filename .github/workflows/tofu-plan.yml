@@ -170,9 +170,45 @@ jobs:
         run: |
           marker="<!-- tofu-plan -->"
           body_file="$(mktemp)"
+
+          # #87: a non-empty plan that this PR's merge won't ever apply
+          # (tofu-apply.yml's push trigger is path-filtered) stays pending
+          # with nothing making that loud. Read tofu-apply.yml's own
+          # `on.push.paths` here instead of hardcoding a second copy, so the
+          # two lists can't drift apart.
+          apply_paths=$(sed -n '/^    paths:/,/^permissions:/p' .github/workflows/tofu-apply.yml \
+            | grep '^      - ' | sed -E 's/^\s*-\s*"([^"]+)"\s*$/\1/')
+
+          changed_files=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/files" --paginate \
+            --jq '.[].filename')
+
+          touches_apply_paths=false
+          while IFS= read -r f; do
+            [[ -z "$f" ]] && continue
+            while IFS= read -r pat; do
+              [[ -z "$pat" ]] && continue
+              # shellcheck disable=SC2053  # intentional: $pat is a glob (e.g. "**.tf")
+              if [[ "$f" == $pat ]]; then
+                touches_apply_paths=true
+                break 2
+              fi
+            done <<<"$apply_paths"
+          done <<<"$changed_files"
+
+          plan_nonempty=false
+          grep -q '^Plan: ' plan.txt && plan_nonempty=true
+
           {
             echo "$marker"
             echo
+            if $plan_nonempty && ! $touches_apply_paths; then
+              echo "> [!WARNING]"
+              echo "> This plan has pending changes, but nothing in this PR touches" \
+                   "\`tofu-apply.yml\`'s trigger paths (\`**.tf\`, \`.terraform.lock.hcl\`) —" \
+                   "**merging this PR will NOT apply them**. Flush via a manual dispatch of" \
+                   "[\`tofu-apply-dispatch.yml\`](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/workflows/tofu-apply-dispatch.yml) if these changes need to land now."
+              echo
+            fi
             echo "### \`tofu plan\` for \`${GITHUB_SHA}\` (tree \`${TREE_SHA}\`)"
             echo
             echo '```'
