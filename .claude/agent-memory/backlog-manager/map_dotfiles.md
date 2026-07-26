@@ -9,4 +9,3 @@ metadata:
 - Memory store: `.claude/agent-memory/backlog-manager/` (tracked; pointer contract per dotfiles ADR-0033)
 - Hook: personal macOS/Debian dotfiles; much of its backlog is meta (workflow/agent-config), grooming conventions in its own store.
 - Checkout hint (non-portable — probe before trusting; a wrong value means *unknown*, never "no checkout"): `~/.config/dotfiles` (not under `~/code` like the other repos)
-- Pending relocation: infra#83 — slim this store to the pointer contract; `dotfiles_repo.md` here predates the residency rule

@@ -2,12 +2,14 @@
 name: label-taxonomy
 description: The infra repo's label scheme, its terraform source-of-truth, and when each label applies
 metadata:
-  type: project
+  type: reference
 ---
 
 Labels are **terraform-governed**: the source of truth is `local.labels` in `repos.tf`, applied
-to every managed repo by `github_issue_label.this` in `main.tf`. The live label set on the infra
-repo matches that map exactly (21 labels).
+to every managed repo by `github_issue_label.this` in `main.tf` (`setproduct` over
+`local.repos` × `local.labels` — one `local.labels` entry creates the label on every managed repo,
+not just the one it's meant for). The live label set on the infra repo matches that map exactly —
+verify with `gh label list`, don't cache a count here.
 
 **Why it matters:** the same canonical set is applied to ALL managed repos (dotfiles + infra), so
 some labels are dotfiles-oriented and rarely apply to infra. Creating a label only via `gh label

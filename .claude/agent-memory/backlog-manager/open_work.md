@@ -1,177 +1,53 @@
 ---
 name: open-work
-description: Pending backlog follow-ups on infra — the theme cloudflare label gap and epic implementation issues awaiting spikes
+description: Infra decision records — ADR pointers, why, and non-recoverable lessons; live status lives on the issues
 metadata:
   type: project
 ---
 
-Outstanding follow-ups after the first backlog fill (2026-07-18):
+Decision records for infra's major threads. Live status lives on the issues — check `gh issue
+list`/`gh issue view` before assuming anything below still holds.
 
-**Epic #50 (Bitwarden Secrets Manager) — CLOSED 2026-07-20, fully shipped, bootstrapped, and
-verified end-to-end.** PR #58 merged all three sub-issues' implementation (#46 provider wiring,
-#47 App-key migration, #51 token vending) in one PR without `Closes #N`, deliberately leaving
-#46/#47/#50/#51 open pending a manual Bitwarden bootstrap + live verification only a human could
-run. That verification is now done and all four closed as completed, each with a comment citing
-its evidence:
-- **#46**: `bitwarden-secrets` provider wired, CI `tofu plan` green on `main`; both infra-Project
-  secrets (`GH_APP_PRIVATE_KEY`, `CLOUDFLARE_API_TOKEN`) imported (`tofu apply`: 2 imported); CI
-  machine account's grants match AGENTS.md's grant table. Two follow-up fixes needed and merged in
-  PR #62 (ADR-0008): provider needs explicit `api_url`/`identity_url` (no defaults); secret
-  resources need `lifecycle { ignore_changes = [value] }` so the provider stops regenerating
-  externally-set values.
-- **#47**: App private key lives only in Bitwarden now; `tofu-apply.yml`/`vend-token.yml` read it
-  via `bitwarden/sm-action` (verified live run: "Read App private key from Bitwarden: success" →
-  "Mint elevated App token: success"). Native `GH_APP_PRIVATE_KEY` Actions secret deleted by hand.
-- **#51**: `vend-token.yml` publishes `{token, expires_at}` to the `vended-tokens` Project, token
-  masked in logs. Write-rejection check passed: vended token gets 403 "Resource not accessible by
-  integration" against `infra` (excluded from its repo scope) while working on other repos. A
-  revoke bug (mint was revoking the token at job end) found and fixed in PR #63 via
-  `skip-token-revoke`.
+**Epic #50 (Bitwarden Secrets Manager)** — shipped via **ADR-0008**
+(`docs/adr/0008-bitwarden-secrets-manager-two-project-store-and-token-vending.md`). Bootstrap
+steps: `docs/BOOTSTRAP.md` §6. Machine-Account grant table: AGENTS.md's Bitwarden section — don't
+restate either here. Implementation gotchas (provider `api_url`/`identity_url` has no defaults;
+`ignore_changes = [value]` on each secret resource; `skip-token-revoke` on the vended token) are
+documented inline where they're load-bearing: `versions.tf`, `app.tf`, `cloudflare.tf`,
+`vend-token.yml`.
 
-ADR-0008 (`docs/adr/0008-bitwarden-secrets-manager-two-project-store-and-token-vending.md`)
-records the decision, resolving infra#33. Bootstrap steps live in `docs/BOOTSTRAP.md` §6; the
-Machine-Account grant table lives in AGENTS.md — don't restate either into issue bodies.
+**#59 (migrate remaining CI/local secrets to Bitwarden)** — completes the Bitwarden arc with #50.
+CI's routine `GH_TOKEN` PAT retired in favor of an App-minted token (plan mints
+`administration:read`+`issues:read`); local elevated secrets fetch from Bitwarden at invocation
+via `scripts/with-infra-secrets.sh`, gated behind a macOS Keychain prompt (**ADR-0009**). `bws`
+CLI packaging (not on Homebrew) is tracked in `carpet-stain/dotfiles#388` — machine-tooling layer,
+not this repo's job.
 
-**#59 (feat(tofu): migrate remaining CI/local standing secrets to Bitwarden) — CLOSED 2026-07-23,
-fully shipped and verified.** This completes the whole Bitwarden secrets migration arc: epic #50 +
-#7 + #59 are all done now. Three PRs:
-- **PR #66** (part 1a): CI backend secrets (state passphrase, both R2 credential pairs, R2 account
-  id) off native Actions secrets into Bitwarden's `infra` Project, fetched via `bitwarden/sm-action`
-  in all three tofu workflows. Not tofu-managed (bootstrap-root creds). Verified: dispatch apply
-  sourced entirely from Bitwarden went green; native secrets deleted.
-- **PR #67** (part 1b): CI's routine `GH_TOKEN` PAT retired. Plan job mints an
-  `administration:read`+`issues:read` App token for the provider, posts its PR comment via the
-  ephemeral `github.token`. Verified: the PR's own `tofu plan` refreshed repos/labels/rulesets
-  green; native `GH_TOKEN` secret deleted.
-- **PR #68** (part 2, `architecture`): local elevated secrets (state passphrase + R2 read/write
-  creds) no longer plaintext in `.envrc.local`. `scripts/with-infra-secrets.sh`, wrapped by
-  `just tofu`/`tofu-apply`, fetches from Bitwarden at invocation using a machine-account token in
-  a **gated** macOS Keychain item (no app ACL → prompts per read; agent shells fail closed).
-  Recorded in **ADR-0009**
-  (`docs/adr/0009-fetch-remaining-secrets-from-bitwarden-at-runtime.md`), which explicitly refines
-  ADR-0008's "local never touches infra" invariant to "never ambiently exported." Verified locally
-  by the human: `just tofu init`/`plan` fetched via the Keychain prompt and planned clean.
+**Epic #11 (ci/cd apply pipeline)** — **ADR-0003** decides the saved-plan-on-merge model (apply
+the exact saved plan). The original leaning was re-plan-on-merge, until ADR-0002's
+`TF_ENCRYPTION` solved that option's stated blocker (plan files need encryption). Read the ADR
+directly for the full reasoning. Implementation issues #24-#26; #25/#26 (apply-on-merge,
+dispatch escape hatch) were deliberately sequenced after epic #28's credential-delegation work,
+not before it.
 
-**Verified end state:** CI's entire native GitHub-secret footprint is exactly `BWS_ACCESS_TOKEN` +
-`BWS_ORGANIZATION_ID` + `BWS_VENDING_ACCESS_TOKEN` (`gh secret list`) — one root credential per
-surface (#33's principle). No crown-jewel secret is ambient in CI or on disk.
+**Epic #28 (GitHub App PAT provisioning)** — **ADR-0004** (single GitHub App, installation tokens
+minted via API) amended by **ADR-0005** (private key scoped to `infra` only, never propagated
+account-wide) after a plan-review catch mid-implementation — see [[backlog-conventions]]'s
+plan-review-vs-ADR pattern for how that reconsideration was gated, rather than decided inline.
+Sub-issues #29-#33. The App's private key later moved into Bitwarden (#47) — the native Actions
+secret ADR-0004/0005 describe no longer exists; **ADR-0008** is the current source for where the
+key lives.
 
-**Follow-up filed, out of #59's scope:** `bws` CLI isn't on Homebrew, so the machine-tooling
-install for `scripts/with-infra-secrets.sh`'s dependency is tracked in
-**carpet-stain/dotfiles#388**, not here — that's the machine-tooling layer's job, not governance.
+**#73 (where a new secret class lives once the 3-account cap is spent)** — resolved via an
+**ADR-0008 amendment**: dotfiles' own `GH_TOKEN` retires onto the vended-token path
+(`dotfiles#377`); an LLM-API-key store is deferred until a local (non-CI) consumer exists
+(`dotfiles#399`/`#400`). #76 (vend cadence vs. the App token's 1h TTL) gates that `dotfiles#377`
+migration directly — see #76's own thread for why, already recorded there.
 
-**Small hygiene note:** PR #69 dropped the deprecated `has_downloads` repo attribute from
-`main.tf` — ended a recurring phantom 3-repo plan drift + per-repo deprecation warnings. Applied
-clean, no issue needed for something this mechanical.
-
-**#7 (feat(tofu): add cloudflare provider and scoped api token) — CLOSED, merged via #61.**
-
-**`theme: cloudflare` label — tracked by issue #13 (sub-issue of Epic #6).** Approved to add to
-`local.labels` in repos.tf (color F38020, desc "Cloudflare account surface — provider, zones, DNS,
-R2, stores"). Does NOT exist in GitHub yet — labels are terraform-managed, needs the repos.tf edit
-+ `just tofu-apply` (elevated token). NEVER `gh label create`. Note: `setproduct` wiring in main.tf
-means the entry creates the label on BOTH infra and dotfiles (shared canonical set).
-**Why:** issues #7-#10 were filed WITHOUT it to avoid blocking on the label round-trip.
-**How to apply:** once #13 is applied and the label exists, apply `theme: cloudflare` to #7-#10.
-
-**Implementation issues gated on spikes.**
-- Epic #11 (ci/cd apply pipeline): spike #12 is **decided and closed** (2026-07-19) — ADR-0003
-  (`docs/adr/0003-ci-apply-pipeline-saved-plan-on-merge-model.md`) picks **Option 1** (apply the
-  exact saved plan), reversing #12's original "leaning toward Option 2" note. The leaning flipped
-  because its stated blocker against Option 1 (plan files need encryption) was already solved by
-  ADR-0002's `TF_ENCRYPTION`, and once that's gone, saved-plan's stale-plan safety net (OpenTofu
-  refuses to apply if state moved) beat re-plan-on-merge at this repo's scale. Read the ADR
-  directly for the full reasoning — don't rely on this summary. Implementation issues filed under
-  #11: #24 (plan-on-PR workflow + PR comment, not blocked), #25 (apply-on-merge workflow), #26
-  (`workflow_dispatch` apply-main escape hatch). **#25 and #26 are blocked on #19** (native
-  `blocked-by` + `blocked` label) — CI has no mechanism yet to hold the elevated
-  Administration-scope credential apply needs; don't start either before #19 resolves.
-- Spike #10 flags the tofu-state-write trap, still open, still "leaning to validate," NOT decided.
-  Don't treat the leaning as the outcome.
-
-**Epic child dependencies:** #8 and #9 depend on #7 (provider must land first, now merged).
-Reflected in their bodies, not in a label — no native dependency link set.
-
-**#19 (spike, architecture, `theme: credentials`, priority medium) — GitHub PAT provisioning +
-cross-repo delegation model, filed 2026-07-18.** Not a child of epic #6 — deliberately standalone,
-since it's account-wide (every managed repo's credential model), not Cloudflare-scoped. Decided:
-ADR-0004 (`docs/adr/0004-github-app-pat-provisioning-and-cross-repo-delegation-model.md`) closes
-#19 — adopt a single GitHub App (installation tokens minted via API, no long-lived human-owned
-PAT), tracked as epic #28. See the epic #28 entry below for the full follow-on (ADR-0004 was
-itself amended by ADR-0005 before any of it shipped).
-
-**Epic #28 (`epic(tofu): adopt GitHub App for PAT provisioning and delegation`) — ADR-0004
-accepted 2026-07-18, amended by ADR-0005 2026-07-19.** Sub-issues: #29 (register the App), #30
-(install across `local.repos`), #31 (propagate the private key), #32 (mint scoped tokens in CI),
-#33 (local/agent-shell bootstrap — separate open spike, `GITHUB_TOKEN` can't reach outside CI,
-tracks dotfiles#160). #31/#32 unblock epic #11's #25/#26.
-
-During #28's plan review, #31 as drafted diverged from ADR-0004's literal text (a scoped-down key
-holder instead of blanket `for_each` propagation over `local.repos`) — reverted to match the
-accepted ADR rather than ship a silent divergence, and spike #34 filed to gate the reconsideration
-deliberately instead of deciding it inline. **#34 resolved 2026-07-19: ADR-0005**
-(`docs/adr/0005-scope-the-github-app-private-key-to-infra-only.md`) **amends ADR-0004** — the
-App's private key is held only by `infra` (a single `github_actions_secret` in `infra`'s own
-repo), not propagated to every repo in `local.repos`; `infra`'s CI is the sole minting authority
-for any App-issued token, including the elevated `administration`-scope ones #25/#26 need. Read
-ADR-0005 directly for the full reasoning (the per-mint-narrowing-doesn't-defend-against-a-raw-key-
-holder argument, and why ADR-0004 reached for blanket propagation in the first place — personal
-account, no org-secret-restricted-to-N-repos feature to fall back on) — don't rely on this summary
-for anything written into an issue. #31 and #32 rewritten to match (infra-only secret, infra-only
-minting); the native `blocked-by #34` link removed from both (#31 stays `blocked` — still blocked
-by open #29; #32 was never `blocked`-labeled). Epic #28's body corrected to match. #33 stays open,
-unaffected either way — ADR-0005 says so explicitly. Note: the App's private key itself was later
-migrated into Bitwarden (epic #50, #47) — the native Actions secret this ADR describes no longer
-exists; ADR-0008 is the current source for where the key lives.
-
-**Reusable fact for future credential-scoping issues:** every GitHub Actions job already gets a
-repo-scoped `GITHUB_TOKEN` for free, set via that workflow's own `permissions:` block — that
-covers all *same-repo* CI work (issues/PRs/contents/actions). The App (and its private key) is
-only for `infra`'s *cross-repo or elevated* (`administration`-scope) work. Don't reach for an
-App-minted token for routine same-repo automation in any managed repo — check whether
-`GITHUB_TOKEN` already covers it first.
-
-**#73 (spike, credentials) — CLOSED 2026-07-25 via ADR-0008 amendment, PR #77.** Resolved where
-two new secrets live now that the free-tier 3-Machine-Account cap (ADR-0008) is spent: (1)
-dotfiles' own `GH_TOKEN` retires onto the vended token path — audited clean, `Actions` was the
-only scope gap and it's a single human-invoked step with a documented fallback, so the vended
-token isn't widened; (2) the LLM-API-key store (for `dotfiles`#330/#370's shipped PR-reviewer and
-the unbuilt `dotfiles`#399/#400 scratch-terminal) is **deferred** until a local (non-CI) consumer
-exists — the shipped reviewer stays a native Actions secret, the correct home for single-repo CI.
-Also corrected a stale ADR-0008 consequence: merging the two CI-side Machine Accounts (originally
-flagged as the fallback if a 4th account were ever needed) would, post-ADR-0009, hand the
-unattended vend cron write-`infra` — the actual binding constraint is accounts (0 free), not
-Projects (1 of 3 free), so a new secret class gets a new Project read by an existing account, no
-merge. Follow-ups tracked in `dotfiles`#377 (the retire-`GH_TOKEN` migration) and
-`dotfiles`#399/#400 (LLM key plan once that tool exists).
-
-**#73's case (1) sharpens #76's stakes — noted on #76, 2026-07-25.** #76 (`fix(ci): vend-token.yml's
-schedule cadence doesn't guarantee a fresh token`, still open, `priority: high`) documents that the
-vend cron's real cadence (70-95 min gaps, GitHub throttles scheduled runs on public repos) routinely
-outlives the App token's 1h TTL — the published vended token is often already expired. Before #73,
-that only blocked `dotfiles`#377/#403 as a *read* consumer. #73's case (1) now commits dotfiles to
-*retiring its own working PAT* onto that same unreliable path, so #76 gates that migration outright,
-not just the read-consumer. Recorded on #76 via a comment plus a native cross-repo `blocking` link
-to `carpet-stain/dotfiles#377` (confirmed working — see [[backlog-conventions]]'s linking section).
-#76's fix should land as ADR-0008's *third* block (after the original decision and #73's amendment)
-and correct the #73 amendment's liveness-coupling line, which currently only names the 60-day
-scheduled-workflow auto-disable as the risk — #76's cadence gap is the more acute, routine one and
-isn't mentioned there yet.
+**#22 (import `golden-ratio-dual-gate`)** — the public-vs-private design question is decided
+(public, not the import itself): GitHub's branch-protection Rulesets require a paid plan for a
+private repo (verified live), so going private would have needed a `visibility`-based `for_each`
+exclusion. The technical precedent is kept deliberately in **#22's own body**, not here — read it
+if a genuinely private repo needs onboarding later; check #22 itself for the import's status.
 
 See [[backlog-conventions]] and [[label-taxonomy]].
-
-**#22 (enhancement, priority medium) — import `golden-ratio-dual-gate` into `local.repos`,
-filed 2026-07-18, simplified 2026-07-19.** Originally scoped as this account's first *private*
-repo, which surfaced a real gap: GitHub's branch-protection mechanisms (classic API and
-Rulesets) require a paid plan for private repos — verified via GitHub's docs and a live 403
-against this exact repo. Went through five plan-review rounds designing a `visibility`-based
-`for_each` exclusion for `github_repository_ruleset.this` before the user decided (2026-07-19) to
-make the repo public instead, resolving the whole plan-tier question outright. Issue rewritten to
-drop `architecture`/`plan-approved` — it's now the same "adopt an existing repo" shape as
-`project-starter-template`#14, no gate needed. **The private-repo analysis is kept in #22's body
-as precedent**, not deleted — worth reading if a genuinely private repo ever needs onboarding:
-the key finding was that `github_repository.this`'s merge-method settings
-(`allow_rebase_merge`/etc.) are unconditional regardless of visibility, but
-`github_repository_ruleset.this`'s four bundled protections (deletion, force-push,
-PR-requirement, required-checks) are only available on a paid plan for a private repo — excluding
-the ruleset loses all four, not just CI-gating.
