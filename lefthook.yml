@@ -1,9 +1,74 @@
-# Composition root — base-owned, never edited by an overlay (ADR-0020 in the
-# template's source repo). Base jobs live in lefthook-base.yml (tagged
-# `base`); lefthook-lang.yml ships here as an empty stub a language overlay
-# overwrites with its jobs (tagged `lang`). Locally every layer's jobs run on
-# commit/push; each CI workflow runs only its own tag slice. Install with
-# `lefthook install`.
-extends:
-  - lefthook-base.yml
-  - lefthook-lang.yml
+# Hand-maintained, not a copier overlay: this repo is a one-off (ADR-0002).
+# Formerly split across lefthook-base.yml/lefthook-lang.yml to mirror
+# project-starter-template's composable-overlay structure (ADR-0020 there);
+# collapsed since infra never composes a second file in (#21). The `base`/
+# `lang` tags below are what lint.yml/tofu.yml's CI jobs each select via
+# `just lint --tag ...`; keep every job's tag. Install with `lefthook install`.
+pre-commit:
+  jobs:
+    - name: actionlint
+      tags: [base]
+      glob:
+        - ".github/workflows/*.yml"
+        - ".github/workflows/*.yaml"
+      run: actionlint {staged_files}
+
+    - name: markdownlint
+      tags: [base]
+      glob:
+        - "*.md"
+        - "**/*.md"
+      exclude:
+        - "CHANGELOG.md"
+        - ".claude/agent-memory/**"
+      run: markdownlint-cli2 {staged_files}
+
+    - name: md-format
+      tags: [base]
+      glob:
+        - "*.md"
+        - "**/*.md"
+      exclude:
+        - "CHANGELOG.md"
+        - ".claude/agent-memory/**"
+      run: prettier --check {staged_files}
+
+    - name: yaml-format
+      tags: [base]
+      glob:
+        - ".github/dependabot.yml"
+        - ".markdownlint-cli2.yaml"
+        - "lefthook.yml"
+      run: yamlfmt -lint {staged_files}
+
+    - name: comment-concision
+      tags: [base]
+      glob:
+        - "*.tf"
+        - "scripts/*.sh"
+      run: scripts/check-comment-concision.sh {staged_files}
+
+    - name: envrc-local-example-sync
+      tags: [base]
+      run: scripts/check-envrc-local-example.sh
+
+    - name: tofu-format
+      tags: [lang]
+      glob: "*.tf"
+      run: tofu fmt -check
+
+    - name: tofu-lint
+      tags: [lang]
+      glob: "*.tf"
+      run: tflint
+
+    - name: tofu-scan
+      tags: [lang]
+      glob: "*.tf"
+      run: trivy config --exit-code 1 --quiet .
+
+pre-push:
+  jobs:
+    - name: envrc-local-example-sync
+      tags: [base]
+      run: scripts/check-envrc-local-example.sh

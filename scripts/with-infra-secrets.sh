@@ -9,7 +9,7 @@
 # deliberately NOT granted an app ACL entry — so each read prompts (gated): an
 # interactive human clicks Allow, a non-interactive/agent shell fails closed.
 #
-# usage: scripts/with-infra-secrets.sh <command> [args...]   (see justfile.lang)
+# usage: scripts/with-infra-secrets.sh <command> [args...]   (see justfile)
 set -euo pipefail
 
 : "${TF_VAR_bws_infra_project_id:?set in .envrc.local — the infra Bitwarden Project UUID}"
