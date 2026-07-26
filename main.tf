@@ -77,6 +77,15 @@ resource "github_issue_label" "this" {
   name        = each.value.label
   color       = local.labels[each.value.label].color
   description = local.labels[each.value.label].description
+
+  lifecycle {
+    precondition {
+      # No lint catches this — the API 422s at apply time otherwise, one
+      # label at a time, across every managed repo.
+      condition     = length(local.labels[each.value.label].description) <= 100
+      error_message = "GitHub caps label descriptions at 100 characters: \"${each.value.label}\" is ${length(local.labels[each.value.label].description)}."
+    }
+  }
 }
 
 # The `protect main` ruleset on every managed repo: rebase-merge only, no

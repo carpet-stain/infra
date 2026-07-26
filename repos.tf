@@ -85,7 +85,7 @@ locals {
     "theme: testing"      = { color = "1D76DB", description = "CI, e2e, and local workflow-run infrastructure" }
     "theme: tool-review"  = { color = "8250DF", description = "Evaluate modern tool/plugin replacements" }
     "theme: xdg-hygiene"  = { color = "D93F0B", description = "$HOME cleanliness / XDG compliance" }
-    "tofu-drift"          = { color = "d73a4a", description = "Auto-opened by the scheduled drift-plan workflow when main's tofu plan shows pending changes (#87) — closes itself once a plan comes back empty" }
+    "tofu-drift"          = { color = "d73a4a", description = "Auto-managed by tofu-drift.yml (#87) — open while main has drift, closes once a plan is clean" }
     "upstream-review"     = { color = "5319E7", description = "Ideas from the z0rc/dotfiles fork worth considering" }
     "wontfix"             = { color = "ffffff", description = "This will not be worked on" }
   }
