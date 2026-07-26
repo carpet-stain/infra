@@ -156,6 +156,12 @@ env -u GH_TOKEN -u GITHUB_TOKEN gh secret set BWS_ACCESS_TOKEN            # CI m
 env -u GH_TOKEN -u GITHUB_TOKEN gh secret set BWS_ORGANIZATION_ID         # Bitwarden Org UUID
 env -u GH_TOKEN -u GITHUB_TOKEN gh secret set BWS_VENDING_ACCESS_TOKEN    # Vending machine account token
 
+# Mirror the two the plan job reads into the Dependabot store too (#89): a
+# `@dependabot rebase`-triggered pull_request run draws secrets.* from there,
+# not Actions. Same values as above, same manual mechanism — no tofu resource.
+env -u GH_TOKEN -u GITHUB_TOKEN gh secret set --app dependabot BWS_ACCESS_TOKEN
+env -u GH_TOKEN -u GITHUB_TOKEN gh secret set --app dependabot BWS_ORGANIZATION_ID
+
 env -u GH_TOKEN -u GITHUB_TOKEN gh variable set BWS_INFRA_PROJECT_ID          # infra Project UUID
 env -u GH_TOKEN -u GITHUB_TOKEN gh variable set BWS_APP_KEY_SECRET_ID         # GH_APP_PRIVATE_KEY secret UUID
 env -u GH_TOKEN -u GITHUB_TOKEN gh variable set BWS_PASSPHRASE_SECRET_ID      # TF_STATE_PASSPHRASE secret UUID
