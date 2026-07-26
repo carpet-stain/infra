@@ -6,6 +6,17 @@
 
 locals {
   repos = {
+    deal-finder = {
+      description      = "Marketplace-monitoring for secondhand PC parts: polls sources, filters against an in-progress build's needs, LLM-judges fit/price, notifies (never transacts)"
+      visibility       = "public"
+      has_issues       = true
+      has_projects     = false
+      has_wiki         = false
+      has_discussions  = false
+      allow_auto_merge = true
+      topics           = []
+    }
+
     dotfiles = {
       description      = "Personal configuration for zsh, NeoVim, ZelliJ and other tools"
       visibility       = "public"
