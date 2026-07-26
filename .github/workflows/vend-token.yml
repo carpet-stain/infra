@@ -9,15 +9,18 @@ name: Vend scoped token
 # read/write on `vended-tokens`, and nothing else.
 on:
   schedule:
-    # Every 20 minutes → 72 runs/day. The minted token lives 1 hour, so the
-    # freshest published token is never older than ~20 min and always has
-    # ≥40 min of life left. GitHub's own docs call scheduled runs best-effort
-    # and delayable under load; even a 20-minute delay still lands a fresh
-    # token well inside the previous one's hour — the real buffer #51's
-    # acceptance asks for, not the thin 15 min a 45-minute cadence would
-    # leave. Public-repo Actions minutes are unmetered, so 72/day is free
-    # (a load-bearing "infra stays public" assumption, ADR-0008).
-    - cron: "*/20 * * * *"
+    # Every 5 minutes → up to 288 runs/day. The minted token lives 1 hour, so
+    # when a run fires on schedule the freshest published token is within ~5
+    # min and has ~55 min of life left. That is NOT a hard guarantee: #76
+    # measured real gaps of 1.5-3.5h at the previous 20-min cadence, because
+    # GitHub's own docs call schedule: best-effort and delayable under load
+    # on public repos — no cadence tightening changes that. This narrows the
+    # average gap and its blast radius; it does not close it. See ADR-0008's
+    # #76 amendment for what was rejected (a self-requeuing dispatch chain)
+    # and the harder open question deferred to a follow-up issue.
+    # Public-repo Actions minutes are unmetered, so 288/day is free (a
+    # load-bearing "infra stays public" assumption, ADR-0008).
+    - cron: "*/5 * * * *"
   # Manual trigger for the masked-token dry run #51's acceptance calls for,
   # and for re-vending immediately after the 60-day inactivity auto-disable
   # (ADR-0008) is cleared.

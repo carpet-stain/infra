@@ -225,3 +225,52 @@ an ambient `.envrc.local` export) with its actual usage in hand.
 Follow-ups: `dotfiles`#377 (retire `GH_TOKEN`, update its Non-goals);
 `dotfiles`#399/#400 (the LLM key's plan once the tool exists). No infra
 grant/Project change falls out of this now — the store is unchanged.
+
+## Amendment — #76 (2026-07-26): the cadence guarantee was never hard
+
+`vend-token.yml`'s own comment stated a guarantee it couldn't back: "the
+freshest published token is never older than ~20 min and always has ≥40 min
+of life left." #76 measured the real gaps between vend runs at 1.5-3.5h, not
+20 min — GitHub's `schedule:` trigger is best-effort and delayable under
+load on public repos, a fact the workflow's comment already conceded in
+passing without following through on the consequence. Against the token's
+hard 1h TTL, those gaps routinely left the published token expired, which
+fired `dotfiles`#377/#403's loud stale-token failure on every shell entry
+during the gap.
+
+**What shipped:** `schedule:` tightened from `*/20 * * * *` to `*/5 * * * *`
+— zero new credentials, zero new surface, still free on an unmetered public
+repo. This narrows the average gap; it does not make the guarantee hard.
+The workflow's comment and `CONSUMING-SECRETS.md` are corrected to stop
+claiming a fixed buffer and say so plainly: no cadence tightening turns a
+best-effort scheduler into an at-least-once one.
+
+**Rejected: a self-requeuing dispatch chain** (each run sleeps ~15-18 min
+then re-triggers itself via `workflow_dispatch` instead of relying on
+`schedule:`). Reviewed adversarially and rejected on four grounds: (1) it
+doesn't fix the actual worst case — its fallback when a link breaks is the
+same unreliable `schedule:` backup the design was trying to escape, and
+chain-survival math means links break often (~72/day; even 99%-reliable
+links survive a full day only ~50% of the time); (2) "`workflow_dispatch`
+avoids `schedule:` starvation" is a plausible but unverified assumption on
+this repo; (3) self-dispatch needs `actions: write`, regressing the job's
+documented `permissions: {}` hardening — the most unattended, most-exposed
+job in the repo would gain the ability to dispatch or cancel any `infra`
+workflow; (4) it races the existing `concurrency: {group: vend-token,
+cancel-in-progress: true}` group, since the sleep step is itself a
+cancellation target the whole time it's the load-bearing step.
+
+**Rejected: a longer-lived credential.** The 1h TTL is `create-github-app-
+token`'s hard ceiling; moving off the GitHub App token to buy TTL reverses
+ADR-0004/0008's deliberate choice of a scoped, mintable App token over a
+static long-lived PAT — a security regression, not a fix.
+
+**Deferred to #98:** whether GitHub Actions alone can ever give a hard
+cadence guarantee on a public repo, and if not, whether the fix belongs on
+the consumer side instead — on-demand vending (a consumer triggers a vend
+when its cached token is stale, instead of relying on an eager push
+cadence) or staleness tolerance in the consumer's fail behavior. On-demand
+vending would need a new `actions: write`-capable grant reachable from
+local/agent shells, a security-surface question of its own not yet
+reviewed, and reshapes `dotfiles`#377's design too — genuinely open, not
+pre-decided here.
