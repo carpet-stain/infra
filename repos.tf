@@ -30,6 +30,24 @@ locals {
       ]
     }
 
+    golden-ratio-dual-gate = {
+      description      = "SPY/TIP dual-gate trend-timed leveraged portfolio: research, backtest, and (eventually) Schwab-connected execution"
+      visibility       = "public"
+      has_issues       = true
+      has_projects     = true
+      has_wiki         = false
+      has_discussions  = false
+      allow_auto_merge = false
+      topics = [
+        "backtesting",
+        "leveraged-etfs",
+        "portfolio-management",
+        "python",
+        "quantitative-finance",
+        "trading-strategy",
+      ]
+    }
+
     infra = {
       description      = "GitHub account governance as code — repos, labels, rulesets (OpenTofu)"
       visibility       = "public"
