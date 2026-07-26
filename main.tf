@@ -41,9 +41,27 @@ resource "github_repository" "this" {
     # Inert while squash-merge is off, and GitHub's create API stores its
     # own defaults for them regardless of what's sent — pinning them makes
     # every fresh repo drift once. Unmanaged on purpose.
+    #
+    # The other five (#88): GitHub's GET /repos omits every merge-setting
+    # field for a credential without write-tier repo access — confirmed
+    # empirically against this exact App-token config, not just read from
+    # docs. tofu-plan.yml's administration:read token gets them back as
+    # null, which the provider then diffs against these true/true/true
+    # config values on every single PR, a permanent 3-change floor with no
+    # real drift underneath. There's no read-tier permission that fixes
+    # this — granting write to the plan token would defeat #59's whole
+    # point (a compromised plan step could then rewrite repo settings).
+    # Unmanaged past initial creation; the "protect main" ruleset's
+    # allowed_merge_methods = ["rebase"] is the actual rebase-only
+    # enforcement, a harder gate than these convenience toggles.
     ignore_changes = [
       squash_merge_commit_title,
       squash_merge_commit_message,
+      allow_auto_merge,
+      allow_rebase_merge,
+      delete_branch_on_merge,
+      merge_commit_title,
+      merge_commit_message,
     ]
   }
 }
