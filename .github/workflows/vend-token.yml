@@ -58,12 +58,20 @@ jobs:
             ${{ vars.BWS_APP_KEY_SECRET_ID }} > GH_APP_PRIVATE_KEY
 
       # The vended token, scoped deliberately: {contents, issues,
-      # pull_requests}: write and NO administration (create-github-app-token
-      # DOES expose permission-administration — omitting it is the point, not
-      # an accident). repositories is every entry in local.repos EXCEPT infra
-      # itself: a vended token that could write infra could push a crafted
-      # file and open a PR against the one repo holding the raw key and
-      # running this mint (#51/ADR-0008). Keep this list in sync with
+      # pull_requests, actions}: write and NO administration
+      # (create-github-app-token DOES expose permission-administration —
+      # omitting it is the point, not an accident). actions:write (#105)
+      # covers gh run view/list (CI diagnosis, e.g. the #88 investigation)
+      # and gh workflow run (dispatch, e.g. release-prepare) — write over
+      # read since dispatch is routine flow here, not just diagnosis;
+      # downgrade to read if that judgment changes. Every permission on this
+      # token, actions included, is bounded by repositories below: it does
+      # NOT reach infra (still excluded) and administration stays absent, so
+      # the #51 crafted-PR-against-infra containment is untouched.
+      # repositories is every entry in local.repos EXCEPT infra itself: a
+      # vended token that could write infra could push a crafted file and
+      # open a PR against the one repo holding the raw key and running this
+      # mint (#51/ADR-0008). Keep this list in sync with
       # local.repos-minus-infra (repos.tf); tofu-apply.yml hardcodes the full
       # list the same way.
       - name: Mint scoped token
@@ -76,6 +84,7 @@ jobs:
           permission-contents: write
           permission-issues: write
           permission-pull-requests: write
+          permission-actions: write
           # The vended token is consumed later by a local shell, not in this
           # job — so it must survive past job end. Without this, the action
           # revokes it on cleanup and every consumer gets a dead token (401).
