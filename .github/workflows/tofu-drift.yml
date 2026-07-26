@@ -1,0 +1,156 @@
+name: Tofu drift
+
+# Layer 2 of #87: tofu-plan.yml only ever plans against a PR's branch, so
+# drift that never crosses a PR (a manual console edit, a change made
+# outside tofu entirely) never surfaces anywhere. This runs a read-only
+# `tofu plan` against `main` on a schedule and keeps a single pinned,
+# labeled issue in sync with the result — opened/updated while drift is
+# non-empty, closed once a plan comes back clean. No apply capability and
+# no saved-plan artifact: this is diagnostic-only, never consumed by
+# tofu-apply.yml (ADR-0003's saved-plan model is unchanged).
+on:
+  schedule:
+    # Every 6 hours, off the top of the hour to avoid GitHub's documented
+    # scheduling congestion at :00. Tune here only — nothing else derives
+    # from this interval.
+    - cron: "13 */6 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  # Only scope this job needs beyond read: opening/editing/closing the
+  # pinned drift issue via the workflow's own ephemeral token, below.
+  issues: write
+
+concurrency:
+  group: tofu-drift
+  cancel-in-progress: true
+
+jobs:
+  drift:
+    name: tofu drift plan
+    runs-on: ubuntu-latest
+    # Same read-only credential surface as tofu-plan.yml (#87's acceptance
+    # criterion): BWS_ACCESS_TOKEN configures the bitwarden-secrets
+    # provider, which a plan refreshes regardless of trigger.
+    env:
+      BW_ACCESS_TOKEN: ${{ secrets.BWS_ACCESS_TOKEN }}
+      BW_ORGANIZATION_ID: ${{ secrets.BWS_ORGANIZATION_ID }}
+      TF_VAR_bws_infra_project_id: ${{ vars.BWS_INFRA_PROJECT_ID }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+
+      - name: Install tenv (pinned)
+        env:
+          TENV_VERSION: "4.14.8"
+        run: |
+          curl -fsSL "https://github.com/tofuutils/tenv/releases/download/v${TENV_VERSION}/tenv_v${TENV_VERSION}_Linux_x86_64.tar.gz" \
+            | sudo tar -xz -C /usr/local/bin tenv tofu
+
+      # Same read-only Bitwarden fetch as tofu-plan.yml (#59, ADR-0008) —
+      # state-backend credentials and the App private key, nothing apply
+      # needs.
+      - name: Read secrets from Bitwarden
+        id: bw-backend
+        uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793 # v3.0.1
+        with:
+          access_token: ${{ secrets.BWS_ACCESS_TOKEN }}
+          set_env: false
+          secrets: |
+            ${{ vars.BWS_PASSPHRASE_SECRET_ID }} > TF_STATE_PASSPHRASE
+            ${{ vars.BWS_R2_PLAN_KEY_SECRET_ID }} > R2_PLAN_ACCESS_KEY_ID
+            ${{ vars.BWS_R2_PLAN_TOKEN_SECRET_ID }} > R2_PLAN_STORAGE_TOKEN
+            ${{ vars.BWS_R2_ACCOUNT_SECRET_ID }} > R2_ACCOUNT_ID
+            ${{ vars.BWS_APP_KEY_SECRET_ID }} > GH_APP_PRIVATE_KEY
+
+      # Same read-only App token as tofu-plan.yml (#59) — no write scope,
+      # this never mutates repo state.
+      - name: Mint read-only App token
+        id: app-token
+        uses: ./.github/actions/mint-app-token
+        with:
+          client-id: ${{ vars.GH_APP_CLIENT_ID }}
+          private-key: ${{ steps.bw-backend.outputs.GH_APP_PRIVATE_KEY }}
+          repositories: dotfiles,infra,project-starter-template
+          permission-administration: read
+          permission-issues: read
+
+      # Mirrors tofu-plan.yml's tofu init + plan exactly, minus the
+      # artifact/tree-hash bookkeeping — this plan is never consumed by an
+      # apply, only read for its "any changes?" verdict.
+      - name: tofu init + plan
+        id: plan
+        env:
+          TENV_AUTO_INSTALL: "true"
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+          TF_STATE_PASSPHRASE: ${{ steps.bw-backend.outputs.TF_STATE_PASSPHRASE }}
+          R2_PLAN_STORAGE_TOKEN: ${{ steps.bw-backend.outputs.R2_PLAN_STORAGE_TOKEN }}
+          AWS_ACCESS_KEY_ID: ${{ steps.bw-backend.outputs.R2_PLAN_ACCESS_KEY_ID }}
+          R2_ACCOUNT_ID: ${{ steps.bw-backend.outputs.R2_ACCOUNT_ID }}
+        run: |
+          AWS_SECRET_ACCESS_KEY="$(printf '%s' "$R2_PLAN_STORAGE_TOKEN" | shasum -a 256 | cut -d' ' -f1)"
+          export AWS_SECRET_ACCESS_KEY
+          export AWS_ENDPOINT_URL_S3="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+          export TF_ENCRYPTION='
+          key_provider "pbkdf2" "state" {
+            passphrase = "'"$TF_STATE_PASSPHRASE"'"
+          }
+          method "aes_gcm" "state" {
+            keys = key_provider.pbkdf2.state
+          }
+          state {
+            method   = method.aes_gcm.state
+            enforced = true
+          }
+          plan {
+            method   = method.aes_gcm.state
+            enforced = true
+          }'
+          tofu init -input=false
+          # -lock=false: same reasoning as tofu-plan.yml — this R2
+          # credential is read-only, can't take the write-based lock, and
+          # doesn't need to since this never writes state.
+          tofu plan -out=tfplan -input=false -lock=false
+          tofu show -no-color tfplan > plan.txt
+
+      - name: Open, update, or close the pinned drift issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          marker="<!-- tofu-drift -->"
+
+          plan_nonempty=false
+          grep -q '^Plan: ' plan.txt && plan_nonempty=true
+
+          existing=$(gh issue list --repo "${GITHUB_REPOSITORY}" --label tofu-drift --state open \
+            --json number --jq '.[0].number // empty')
+
+          if $plan_nonempty; then
+            body_file="$(mktemp)"
+            {
+              echo "$marker"
+              echo
+              echo "### Pending changes on \`main\`"
+              echo
+              echo "A scheduled [\`tofu plan\`](${RUN_URL}) against \`main\` found drift that no PR" \
+                   "surfaced. This issue stays open and updates in place until a scheduled plan"  \
+                   "comes back empty; to apply now, dispatch \`tofu-apply-dispatch.yml\`."
+              echo
+              echo '```'
+              cat plan.txt
+              echo '```'
+            } >"$body_file"
+
+            if [[ -n "$existing" ]]; then
+              gh issue edit "$existing" --repo "${GITHUB_REPOSITORY}" --body-file "$body_file"
+            else
+              gh issue create --repo "${GITHUB_REPOSITORY}" --title "Tofu drift detected on main" \
+                --label tofu-drift --body-file "$body_file"
+            fi
+          elif [[ -n "$existing" ]]; then
+            gh issue close "$existing" --repo "${GITHUB_REPOSITORY}" \
+              --comment "Closing — the latest scheduled [plan](${RUN_URL}) against \`main\` shows no pending changes."
+          fi
