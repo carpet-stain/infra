@@ -313,10 +313,11 @@ reason than the Actions copy already isn't tofu-managed.
 ## How to verify changes
 
 - `just lint` — the full local pre-commit union: actionlint, markdownlint,
-  prettier, yamlfmt, envrc-sync, comment-concision, plus the OpenTofu `lang`
-  slice (`tofu fmt -check`, `tflint`, `trivy config`). Scope to one slice
-  with `just lint --tag base` or `--tag lang` — the exact slices `lint.yml`
-  and `tofu.yml` run in CI.
+  prettier, yamlfmt, gitleaks, shfmt, shellcheck, justfile-format,
+  editorconfig-checker, envrc-sync, comment-concision, plus the OpenTofu
+  `lang` slice (`tofu fmt -check`, `tflint`, `trivy config`). Scope to one
+  slice with `just lint --tag base` or `--tag lang` — the exact slices
+  `lint.yml` and `tofu.yml` run in CI.
 - `just tofu init` (once per checkout), then `just tofu plan` — the real
   end-to-end check; review the plan before any `just tofu-apply`. See
   Credentials for the token scope each verb needs.

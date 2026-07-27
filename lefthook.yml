@@ -48,6 +48,61 @@ pre-commit:
         - "scripts/*.sh"
       run: scripts/check-comment-concision.sh {staged_files}
 
+    - name: gitleaks
+      tags: [base]
+      # No glob, no {staged_files}: gitleaks is content-based, not
+      # file-type-gated, and must cover .claude/agent-memory/** (the
+      # committed agent-memory store's secrets floor) — never copy the
+      # markdown jobs' exclude list here. Whole-tree dir scan rather than
+      # --staged so the same invocation is meaningful under CI's
+      # `lefthook run pre-commit --all-files`, where nothing is staged.
+      # Allowlist lives in .gitleaks.toml. Lineage: dotfiles#390, ported via
+      # project-starter-template#26 (#101).
+      run: gitleaks dir . --no-banner --redact
+
+    - name: shfmt
+      tags: [base]
+      glob:
+        - "scripts/*.sh"
+      # Ported via project-starter-template#28 (#101).
+      run: shfmt -i 2 -ci -d {staged_files}
+
+    - name: shellcheck
+      tags: [base]
+      # .envrc/.envrc.local.example carry `# shellcheck shell=bash`
+      # directives since they have no shebang of their own. Ported via
+      # project-starter-template#28 (#101).
+      glob:
+        - "scripts/*.sh"
+        - ".envrc"
+        - ".envrc.local.example"
+      run: shellcheck {staged_files}
+
+    - name: justfile-format
+      tags: [base]
+      glob:
+        - "justfile"
+      # --justfile (not a positional, which `just` reads as a recipe name)
+      # takes exactly one path. --fmt --check validates syntax (it must
+      # parse to format) and canonical formatting in one pass. Ported via
+      # project-starter-template#29 (#101).
+      run: just --fmt --check --justfile {staged_files}
+
+    - name: editorconfig-checker
+      tags: [base]
+      glob:
+        - "*"
+        - "**/*"
+      exclude:
+        - "CHANGELOG.md"
+        - ".claude/agent-memory/**"
+      # The catch-all for files no dedicated formatter covers. Indent checks
+      # are off (--disable-indentation): indentation stays each
+      # per-language formatter's job (shfmt/prettier/yamlfmt), which
+      # understands its own syntax. Ported via project-starter-template#29
+      # (#101).
+      run: editorconfig-checker --disable-indentation {staged_files}
+
     - name: envrc-local-example-sync
       tags: [base]
       run: scripts/check-envrc-local-example.sh

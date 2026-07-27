@@ -10,5 +10,3 @@ updates:
       interval: "weekly"
     commit-message:
       prefix: "chore(ci)"
-    labels:
-      - "dependencies"
