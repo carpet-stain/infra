@@ -12,6 +12,15 @@ lint *args:
 adr *args:
     scripts/new-adr.sh {{ args }}
 
+# Auto-format markdown with prettier (fixes what md-format only checks).
+# Manual, deliberately NOT a lefthook job: `just lint` (and CI's lint job) run
+# `lefthook run pre-commit --all-files`, and `prettier --write` always exits 0
+# — hooking it would make md-format stop gating format in CI (dotfiles#406).
+# Scoped via git ls-files to tracked markdown only, mirroring md-format's
+# excludes. Ported via project-starter-template#30 (#101).
+format:
+    git ls-files -z '*.md' ':!:CHANGELOG.md' ':!:.claude/agent-memory/**' | xargs -0 prettier --write
+
 # Run OpenTofu (init, plan, state, ...). The backend passphrase + R2 creds are
 # fetched from Bitwarden at invocation via the Keychain-gated wrapper (#59,
 # ADR-0009) — expect a Keychain "Allow" prompt — not exported ambiently.

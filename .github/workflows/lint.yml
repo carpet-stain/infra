@@ -53,6 +53,34 @@ jobs:
           curl -fsSL "https://github.com/google/yamlfmt/releases/download/v${YAMLFMT_VERSION}/yamlfmt_${YAMLFMT_VERSION}_Linux_x86_64.tar.gz" \
             | sudo tar -xz -C /usr/local/bin yamlfmt
 
+      # Ported via project-starter-template#26 (#101).
+      - name: Install gitleaks
+        env:
+          GITLEAKS_VERSION: "8.30.1"
+        run: |
+          curl -fsSL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            | sudo tar -xz -C /usr/local/bin gitleaks
+
+      # Ported via project-starter-template#28 (#101).
+      - name: Install shfmt and shellcheck
+        env:
+          SHFMT_VERSION: "3.13.1"
+          SHELLCHECK_VERSION: "0.11.0"
+        run: |
+          curl -fsSL "https://github.com/mvdan/sh/releases/download/v${SHFMT_VERSION}/shfmt_v${SHFMT_VERSION}_linux_amd64" \
+            -o /tmp/shfmt && sudo install -m 755 /tmp/shfmt /usr/local/bin/shfmt
+          curl -fsSL "https://github.com/koalaman/shellcheck/releases/download/v${SHELLCHECK_VERSION}/shellcheck-v${SHELLCHECK_VERSION}.linux.x86_64.tar.xz" \
+            | sudo tar -xJ -C /usr/local/bin --strip-components=1 "shellcheck-v${SHELLCHECK_VERSION}/shellcheck"
+
+      # Ported via project-starter-template#29 (#101).
+      - name: Install editorconfig-checker
+        env:
+          EDITORCONFIG_CHECKER_VERSION: "3.8.0"
+        run: |
+          curl -fsSL "https://github.com/editorconfig-checker/editorconfig-checker/releases/download/v${EDITORCONFIG_CHECKER_VERSION}/ec-linux-amd64.tar.gz" \
+            | tar -xz -O bin/ec-linux-amd64 | sudo tee /usr/local/bin/editorconfig-checker > /dev/null
+          sudo chmod +x /usr/local/bin/editorconfig-checker
+
       # `just lint` wraps `lefthook run pre-commit --all-files` — the same
       # entry point contributors run, here scoped to the base-owned jobs via
       # their lefthook tag. Locally (no tag filter) the full union runs on
