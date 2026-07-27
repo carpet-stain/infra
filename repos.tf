@@ -91,6 +91,32 @@ locals {
         "ruff",
       ]
     }
+
+    template-e2e = {
+      # Standing sandbox for project-starter-template's live e2e (tier 2,
+      # project-starter-template#42/#47), same `protect main` ruleset as
+      # every managed repo — no relaxed variant needed (#42's decision).
+      #
+      # Do NOT bundle the tofu-*.yml/vend-token.yml `repositories:` CSV
+      # additions into this same PR: create-github-app-token mints one
+      # token per the *entire* CSV, and 422s it whole if any listed repo
+      # doesn't exist/isn't installed yet — broke CI account-wide on
+      # infra#127's first attempt. Those CSV edits are a required
+      # follow-up PR, after this applies and the App is installed on the
+      # new repo by hand (AGENTS.md).
+      description      = "Permanent sandbox for project-starter-template's live e2e — rendered git-flow output pushed, verified, and discarded per run; not a real project"
+      visibility       = "public"
+      has_issues       = true
+      has_projects     = false
+      has_wiki         = false
+      has_discussions  = false
+      allow_auto_merge = true
+      topics = [
+        "e2e",
+        "sandbox",
+        "project-starter-template",
+      ]
+    }
   }
 
   labels = {
