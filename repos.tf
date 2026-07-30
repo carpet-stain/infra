@@ -130,12 +130,13 @@ locals {
     "epic"                = { color = "5319E7", description = "Large multi-part effort" }
     "good first issue"    = { color = "7057ff", description = "Good for newcomers" }
     "needs-plan-review"   = { color = "5319E7", description = "Needs architectural review before implementation" }
+    "needs-review"        = { color = "FEF2C0", description = "Requests the advisory PR review (pr-code-review.yml) — independent of the architecture/ADR label" }
     "plan-approved"       = { color = "0E8A16", description = "Plan has been reviewed and approved" }
     "priority: high"      = { color = "B60205", description = "Groom/act on soon" }
     "priority: low"       = { color = "C5DEF5", description = "Someday / low urgency" }
     "priority: medium"    = { color = "FBCA04", description = "Normal queue" }
     "release-watch"       = { color = "0E8A16", description = "Flagged by the automated dependency release watcher" }
-    "spike"               = { color = "0E8A16", description = "Time-boxed research/decision" }
+    "spike"               = { color = "0E8A16", description = "Question + concrete deliverable, never open-ended" }
     "theme: agent-config" = { color = "006B75", description = "Claude agent rules, skills, and AGENTS.md" }
     "theme: credentials"  = { color = "BF8700", description = "Token/credential scoping, storage, and loading" }
     "theme: testing"      = { color = "1D76DB", description = "CI, e2e, and local workflow-run infrastructure" }
