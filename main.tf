@@ -151,14 +151,17 @@ resource "github_repository_ruleset" "this" {
       strict_required_status_checks_policy = true
       do_not_enforce_on_create             = false
 
-      required_check {
-        context = "single commit"
-      }
-      required_check {
-        context = "conventional commit"
-      }
-      required_check {
-        context = "adr guard"
+      # single commit/conventional commit/adr guard ship in pr-guards.yml on
+      # every managed repo; extra_required_checks (repos.tf) adds any
+      # checks a specific repo requires that haven't propagated to every
+      # repo's workflow yet — see dotfiles' entry for why that scoping
+      # matters (a required check with no run ever reported blocks merge
+      # forever, account-wide, if added here unscoped).
+      dynamic "required_check" {
+        for_each = concat(["single commit", "conventional commit", "adr guard"], each.value.extra_required_checks)
+        content {
+          context = required_check.value
+        }
       }
     }
   }
