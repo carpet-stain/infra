@@ -7,14 +7,15 @@
 locals {
   repos = {
     deal-finder = {
-      description      = "Marketplace-monitoring for secondhand PC parts: polls sources, filters against an in-progress build's needs, LLM-judges fit/price, notifies (never transacts)"
-      visibility       = "public"
-      has_issues       = true
-      has_projects     = false
-      has_wiki         = false
-      has_discussions  = false
-      allow_auto_merge = true
-      topics           = []
+      description           = "Marketplace-monitoring for secondhand PC parts: polls sources, filters against an in-progress build's needs, LLM-judges fit/price, notifies (never transacts)"
+      visibility            = "public"
+      has_issues            = true
+      has_projects          = false
+      has_wiki              = false
+      has_discussions       = false
+      allow_auto_merge      = true
+      extra_required_checks = []
+      topics                = []
     }
 
     dotfiles = {
@@ -25,6 +26,13 @@ locals {
       has_wiki         = false
       has_discussions  = false
       allow_auto_merge = true
+      # dotfiles.pr-guards.yml's issue-link job (#449) hasn't propagated to
+      # project-starter-template.pr-guards.yml.jinja yet — scoped here, not
+      # in the shared required_status_checks block, so it doesn't become a
+      # required-but-never-reported check (permanent merge block) on every
+      # other managed repo. Fold into the shared block once it's ported
+      # everywhere and this becomes redundant.
+      extra_required_checks = ["issue link"]
       topics = [
         "configuration-management",
         "dotfiles",
@@ -42,13 +50,14 @@ locals {
     }
 
     golden-ratio-dual-gate = {
-      description      = "SPY/TIP dual-gate trend-timed leveraged portfolio: research, backtest, and (eventually) Schwab-connected execution"
-      visibility       = "public"
-      has_issues       = true
-      has_projects     = true
-      has_wiki         = false
-      has_discussions  = false
-      allow_auto_merge = false
+      description           = "SPY/TIP dual-gate trend-timed leveraged portfolio: research, backtest, and (eventually) Schwab-connected execution"
+      visibility            = "public"
+      has_issues            = true
+      has_projects          = true
+      has_wiki              = false
+      has_discussions       = false
+      allow_auto_merge      = false
+      extra_required_checks = []
       topics = [
         "backtesting",
         "leveraged-etfs",
@@ -60,13 +69,14 @@ locals {
     }
 
     infra = {
-      description      = "GitHub account governance as code — repos, labels, rulesets (OpenTofu)"
-      visibility       = "public"
-      has_issues       = true
-      has_projects     = false
-      has_wiki         = false
-      has_discussions  = false
-      allow_auto_merge = true
+      description           = "GitHub account governance as code — repos, labels, rulesets (OpenTofu)"
+      visibility            = "public"
+      has_issues            = true
+      has_projects          = false
+      has_wiki              = false
+      has_discussions       = false
+      allow_auto_merge      = true
+      extra_required_checks = []
       topics = [
         "opentofu",
         "infrastructure-as-code",
@@ -75,13 +85,14 @@ locals {
     }
 
     project-starter-template = {
-      description      = "Copier toolkit for scaffolding governed repos — git-flow base + language overlays"
-      visibility       = "public"
-      has_issues       = true
-      has_projects     = false
-      has_wiki         = false
-      has_discussions  = false
-      allow_auto_merge = true
+      description           = "Copier toolkit for scaffolding governed repos — git-flow base + language overlays"
+      visibility            = "public"
+      has_issues            = true
+      has_projects          = false
+      has_wiki              = false
+      has_discussions       = false
+      allow_auto_merge      = true
+      extra_required_checks = []
       topics = [
         "git-flow",
         "template",
@@ -104,13 +115,14 @@ locals {
       # infra#127's first attempt. Those CSV edits are a required
       # follow-up PR, after this applies and the App is installed on the
       # new repo by hand (AGENTS.md).
-      description      = "Permanent sandbox for project-starter-template's live e2e — rendered git-flow output pushed, verified, and discarded per run; not a real project"
-      visibility       = "public"
-      has_issues       = true
-      has_projects     = false
-      has_wiki         = false
-      has_discussions  = false
-      allow_auto_merge = true
+      description           = "Permanent sandbox for project-starter-template's live e2e — rendered git-flow output pushed, verified, and discarded per run; not a real project"
+      visibility            = "public"
+      has_issues            = true
+      has_projects          = false
+      has_wiki              = false
+      has_discussions       = false
+      allow_auto_merge      = true
+      extra_required_checks = []
       topics = [
         "e2e",
         "sandbox",
