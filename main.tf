@@ -88,23 +88,62 @@ resource "github_issue_label" "this" {
   }
 }
 
-# Repo-specific labels (#13) — deliberately outside the canonical for_each
-# above, since local.infra_labels shouldn't land on every managed repo.
-# One-off for now, not a general per-repo-scoping mechanism.
-resource "github_issue_label" "infra_only" {
-  for_each = local.infra_labels
+# Repo-specific labels (#13, #106) — deliberately outside the canonical
+# for_each above, since local.repo_labels shouldn't land on every managed
+# repo. Flattened to "repo:label" keys, same shape as github_issue_label.this.
+resource "github_issue_label" "repo_only" {
+  for_each = {
+    for pair in flatten([
+      for repo, labels in local.repo_labels : [
+        for name, attrs in labels : merge(attrs, { key = "${repo}:${name}", repo = repo, name = name })
+      ]
+    ]) : pair.key => pair
+  }
 
-  repository  = github_repository.this["infra"].name
-  name        = each.key
+  repository  = github_repository.this[each.value.repo].name
+  name        = each.value.name
   color       = each.value.color
   description = each.value.description
 
   lifecycle {
     precondition {
       condition     = length(each.value.description) <= 100
-      error_message = "GitHub caps label descriptions at 100 characters: \"${each.key}\" is ${length(each.value.description)}."
+      error_message = "GitHub caps label descriptions at 100 characters: \"${each.value.name}\" is ${length(each.value.description)}."
     }
   }
+}
+
+# Reattach state to the renamed/generalized resource instead of destroying
+# and recreating live labels (#106) — a plain rename would otherwise delete
+# each label from its repo for one apply cycle before recreating it.
+moved {
+  from = github_issue_label.infra_only["theme: cloudflare"]
+  to   = github_issue_label.repo_only["infra:theme: cloudflare"]
+}
+
+moved {
+  from = github_issue_label.this["infra:tofu-drift"]
+  to   = github_issue_label.repo_only["infra:tofu-drift"]
+}
+
+moved {
+  from = github_issue_label.this["dotfiles:release-watch"]
+  to   = github_issue_label.repo_only["dotfiles:release-watch"]
+}
+
+moved {
+  from = github_issue_label.this["dotfiles:theme: tool-review"]
+  to   = github_issue_label.repo_only["dotfiles:theme: tool-review"]
+}
+
+moved {
+  from = github_issue_label.this["dotfiles:theme: xdg-hygiene"]
+  to   = github_issue_label.repo_only["dotfiles:theme: xdg-hygiene"]
+}
+
+moved {
+  from = github_issue_label.this["dotfiles:upstream-review"]
+  to   = github_issue_label.repo_only["dotfiles:upstream-review"]
 }
 
 # The `protect main` ruleset on every managed repo: rebase-merge only, no
