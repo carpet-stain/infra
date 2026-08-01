@@ -13,12 +13,15 @@ I fetch it, who do I ask."
 
 One thing: **read access to the vended GitHub token** in the `vended-tokens`
 Project. That token is a narrowly-scoped, rotating credential
-(`{contents, issues, pull_requests, actions}: write`, no `administration`,
-over the managed repos except `infra` itself), republished every 5 minutes by
-`vend-token.yml` on a best-effort basis — GitHub's `schedule:` trigger can be
-delayed on public repos, so this is not a hard freshness guarantee (ADR-0008's
-issue-76 amendment; issue #98 tracks whether a harder guarantee is possible
-at all). It exists precisely so a local or agent shell in another repo can do
+(`{contents, issues, pull_requests, actions}: write` plus `checks: read`,
+no `administration`, over the subset of managed repos with a live
+vended-token consumer — not every repo in `local.repos` minus `infra`;
+see `vend-token.yml`'s own comment for the current list and why each repo
+is on it), republished every 5 minutes by `vend-token.yml` on a
+best-effort basis — GitHub's `schedule:` trigger can be delayed on public
+repos, so this is not a hard freshness guarantee (ADR-0008's issue-76
+amendment; issue #98 tracks whether a harder guarantee is possible at
+all). It exists precisely so a local or agent shell in another repo can do
 routine cross-repo GitHub work without ever touching the App's raw private
 key (ADR-0008; the live consumer is `dotfiles`#377).
 

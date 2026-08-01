@@ -71,6 +71,16 @@ inputs:
       `github_actions_variable` resources aren't tofu-managed here (app.tf).
     required: false
     default: ""
+  permission-checks:
+    description: >
+      Checks permission level for the minted token (e.g. "read") — check-run
+      state and the GraphQL statusCheckRollup field (#132: live-e2e CI-status
+      polling against template-e2e). Requires the App's own registered
+      permission set to include Checks first (a 422 otherwise, independent of
+      this passthrough — confirmed live, #132). Leave unset for no Checks
+      access.
+    required: false
+    default: ""
   skip-token-revoke:
     description: >
       Set "true" to NOT revoke the minted token when the job ends. Default
@@ -102,4 +112,5 @@ runs:
         permission-issues: ${{ inputs.permission-issues }}
         permission-pull-requests: ${{ inputs.permission-pull-requests }}
         permission-secrets: ${{ inputs.permission-secrets }}
+        permission-checks: ${{ inputs.permission-checks }}
         skip-token-revoke: ${{ inputs.skip-token-revoke }}
