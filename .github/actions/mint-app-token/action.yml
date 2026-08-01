@@ -81,6 +81,20 @@ inputs:
       access.
     required: false
     default: ""
+  permission-workflows:
+    description: >
+      Workflows permission level for the minted token (e.g. "write") —
+      required to create or update .github/workflows/*.yml files via a
+      GitHub App token; Contents write alone isn't enough (a raw `git push`
+      touching a workflow file is rejected: "refusing to allow a GitHub App
+      to create or update workflow ... without workflows permission",
+      confirmed live against template-e2e, project-starter-template#48).
+      Same App-registration precondition as permission-checks above — needs
+      Workflows added to the App's own registered permission set first, or
+      this passthrough 422s independent of being set here. Leave unset for
+      no Workflows access.
+    required: false
+    default: ""
   skip-token-revoke:
     description: >
       Set "true" to NOT revoke the minted token when the job ends. Default
@@ -113,4 +127,5 @@ runs:
         permission-pull-requests: ${{ inputs.permission-pull-requests }}
         permission-secrets: ${{ inputs.permission-secrets }}
         permission-checks: ${{ inputs.permission-checks }}
+        permission-workflows: ${{ inputs.permission-workflows }}
         skip-token-revoke: ${{ inputs.skip-token-revoke }}

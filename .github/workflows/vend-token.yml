@@ -86,6 +86,19 @@ jobs:
       # Adding a repo here only works once the App is installed on it
       # (else this mint 422s and every consumer gets a stale token, #127's
       # failure mode) — confirmed installed before this list changed.
+      #
+      # workflows: write is a heavier grant than checks: read above — write
+      # access to CI config, not read access to status — and unlike checks,
+      # it's not already-benign-because-world-readable. Added token-wide
+      # anyway (not a second, narrower, template-e2e-only token) to match
+      # the #132 precedent and keep the vending surface at one token, one
+      # secret: confirm this tradeoff is acceptable before merging, since it
+      # also reaches dotfiles and project-starter-template's routine
+      # local/agent-shell consumption, not just template-e2e's e2e runner. A
+      # push touching a workflow file was rejected without it — confirmed
+      # live against template-e2e (project-starter-template#48's first
+      # bootstrap dispatch): "refusing to allow a GitHub App to create or
+      # update workflow ... without workflows permission".
       - name: Mint scoped token
         id: app-token
         uses: ./.github/actions/mint-app-token
@@ -98,6 +111,7 @@ jobs:
           permission-pull-requests: write
           permission-actions: write
           permission-checks: read
+          permission-workflows: write
           # The vended token is consumed later by a local shell, not in this
           # job — so it must survive past job end. Without this, the action
           # revokes it on cleanup and every consumer gets a dead token (401).

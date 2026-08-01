@@ -13,8 +13,8 @@ I fetch it, who do I ask."
 
 One thing: **read access to the vended GitHub token** in the `vended-tokens`
 Project. That token is a narrowly-scoped, rotating credential
-(`{contents, issues, pull_requests, actions}: write` plus `checks: read`,
-no `administration`, over the subset of managed repos with a live
+(`{contents, issues, pull_requests, actions, workflows}: write` plus
+`checks: read`, no `administration`, over the subset of managed repos with a live
 vended-token consumer — not every repo in `local.repos` minus `infra`;
 see `vend-token.yml`'s own comment for the current list and why each repo
 is on it), republished every 5 minutes by `vend-token.yml` on a
