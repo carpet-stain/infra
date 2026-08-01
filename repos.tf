@@ -1,8 +1,8 @@
 # Config-as-data: routine changes happen here, not in main.tf's resources.
 # One entry per managed repo; the canonical label set applies to every
-# managed repo, except `infra_labels` below, which is repo-specific (#13).
-# Governance invariants (rebase-merge only, branch cleanup) are fixed in
-# main.tf, not per-repo data — see ADR-0011/ADR-0022.
+# managed repo, except `repo_labels` below, which is scoped to one repo
+# apiece (#13, #106). Governance invariants (rebase-merge only, branch
+# cleanup) are fixed in main.tf, not per-repo data — see ADR-0011/ADR-0022.
 
 locals {
   repos = {
@@ -147,23 +147,31 @@ locals {
     "priority: high"      = { color = "B60205", description = "Groom/act on soon" }
     "priority: low"       = { color = "C5DEF5", description = "Someday / low urgency" }
     "priority: medium"    = { color = "FBCA04", description = "Normal queue" }
-    "release-watch"       = { color = "0E8A16", description = "Flagged by the automated dependency release watcher" }
     "spike"               = { color = "0E8A16", description = "Question + concrete deliverable, never open-ended" }
     "theme: agent-config" = { color = "006B75", description = "Claude agent rules, skills, and AGENTS.md" }
     "theme: credentials"  = { color = "BF8700", description = "Token/credential scoping, storage, and loading" }
     "theme: testing"      = { color = "1D76DB", description = "CI, e2e, and local workflow-run infrastructure" }
-    "theme: tool-review"  = { color = "8250DF", description = "Evaluate modern tool/plugin replacements" }
-    "theme: xdg-hygiene"  = { color = "D93F0B", description = "$HOME cleanliness / XDG compliance" }
-    "tofu-drift"          = { color = "d73a4a", description = "Auto-managed by tofu-drift.yml (#87) — open while main has drift, closes once a plan is clean" }
-    "upstream-review"     = { color = "5319E7", description = "Ideas from the z0rc/dotfiles fork worth considering" }
     "wontfix"             = { color = "ffffff", description = "This will not be worked on" }
   }
 
-  # Labels scoped to a single repo — main.tf's github_issue_label.infra_only
-  # applies these instead of the cross-repo for_each above. Cloudflare's
-  # account surface (provider, zones, DNS, R2) is infra-only work; nothing
-  # in dotfiles or project-starter-template will ever carry this theme.
-  infra_labels = {
-    "theme: cloudflare" = { color = "F38020", description = "Cloudflare account surface — provider, zones, DNS, R2, stores" }
+  # Labels scoped to a single repo, keyed by owning repo — main.tf's
+  # github_issue_label.repo_only applies these instead of the cross-repo
+  # for_each above. Each entry's domain ties it to exactly one managed repo
+  # (#106's audit): Cloudflare's account surface and Tofu-drift automation
+  # are infra-only; dependency-release tracking, tool/plugin evaluation,
+  # $HOME/XDG hygiene, and the z0rc/dotfiles fork-review queue are
+  # dotfiles-only. Generalizes the one-off `infra_labels` pattern #104
+  # introduced for `theme: cloudflare` alone.
+  repo_labels = {
+    infra = {
+      "theme: cloudflare" = { color = "F38020", description = "Cloudflare account surface — provider, zones, DNS, R2, stores" }
+      "tofu-drift"        = { color = "d73a4a", description = "Auto-managed by tofu-drift.yml (#87) — open while main has drift, closes once a plan is clean" }
+    }
+    dotfiles = {
+      "release-watch"      = { color = "0E8A16", description = "Flagged by the automated dependency release watcher" }
+      "theme: tool-review" = { color = "8250DF", description = "Evaluate modern tool/plugin replacements" }
+      "theme: xdg-hygiene" = { color = "D93F0B", description = "$HOME cleanliness / XDG compliance" }
+      "upstream-review"    = { color = "5319E7", description = "Ideas from the z0rc/dotfiles fork worth considering" }
+    }
   }
 }
