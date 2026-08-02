@@ -247,14 +247,20 @@ non-secret **variable** holding its Bitwarden UUID:
 
 - Fetched by `sm-action`: `TF_STATE_PASSPHRASE`, `R2_ACCOUNT_ID`, the R2 pair
   (plan reads `R2_PLAN_*` — a separate **Object Read only** token; apply and
-  dispatch read the read/write `R2_APPLY_*`), and `GH_APP_PRIVATE_KEY`. Apply
-  and dispatch mint an elevated App token from the key; the plan job mints an
-  `administration:read`+`issues:read` token for the provider (the routine PAT
-  is retired, #59) and posts its PR comment via the ephemeral `github.token`.
+  dispatch read the read/write `R2_APPLY_*`), `GH_APP_PRIVATE_KEY`, and
+  `CLOUDFLARE_API_TOKEN` (#9, the same token `dns.tf`'s provider reads
+  locally). Apply and dispatch mint an elevated App token from the key; the
+  plan job mints an `administration:read`+`issues:read` token for the
+  provider (the routine PAT is retired, #59) and posts its PR comment via
+  the ephemeral `github.token`.
 - UUID **variables** (not secret): `BWS_INFRA_PROJECT_ID`,
   `BWS_APP_KEY_SECRET_ID`, `BWS_PASSPHRASE_SECRET_ID`, `BWS_R2_ACCOUNT_SECRET_ID`,
-  `BWS_R2_{PLAN,APPLY}_{KEY,TOKEN}_SECRET_ID`, `BWS_VENDED_SECRET_ID`, and
-  `GH_APP_CLIENT_ID`.
+  `BWS_R2_{PLAN,APPLY}_{KEY,TOKEN}_SECRET_ID`, `BWS_VENDED_SECRET_ID`,
+  `BWS_CLOUDFLARE_TOKEN_SECRET_ID`, and `GH_APP_CLIENT_ID`.
+- `CLOUDFLARE_ACCOUNT_ID` (#9): also a plain **variable**, not fetched from
+  Bitwarden — it's account-identifying, not secret, same reasoning as
+  `variables.tf`'s `cloudflare_account_id`. Fed straight to
+  `TF_VAR_cloudflare_account_id`.
 
 Seed the three native secrets, their two-secret Dependabot mirror, and the
 variables once via the elevated session (`gh secret set` / `gh secret set
