@@ -16,3 +16,15 @@ variable "bws_infra_project_id" {
     Bitwarden's UI), never here.
   EOT
 }
+
+variable "cloudflare_account_id" {
+  type        = string
+  nullable    = false
+  description = <<-EOT
+    Cloudflare account id that filmitinc.com and leppez.com's zones (#9,
+    epic #6) belong to. Not secret, but an account-identifying id, so it
+    stays out of this public repo the same way R2_ACCOUNT_ID does (ADR-0002)
+    — fed via TF_VAR_cloudflare_account_id from .envrc.local (locally) and
+    vars.CLOUDFLARE_ACCOUNT_ID (CI).
+  EOT
+}

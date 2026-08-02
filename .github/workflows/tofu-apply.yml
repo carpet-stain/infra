@@ -95,6 +95,7 @@ jobs:
             ${{ vars.BWS_R2_APPLY_KEY_SECRET_ID }} > R2_APPLY_ACCESS_KEY_ID
             ${{ vars.BWS_R2_APPLY_TOKEN_SECRET_ID }} > R2_APPLY_STORAGE_TOKEN
             ${{ vars.BWS_R2_ACCOUNT_SECRET_ID }} > R2_ACCOUNT_ID
+            ${{ vars.BWS_CLOUDFLARE_TOKEN_SECRET_ID }} > CLOUDFLARE_API_TOKEN
 
       # Scoped to exactly what main.tf's resources write: Administration
       # (repo settings, rulesets) and Issues (labels) — nothing else, and
@@ -122,6 +123,7 @@ jobs:
           R2_APPLY_STORAGE_TOKEN: ${{ steps.bw.outputs.R2_APPLY_STORAGE_TOKEN }}
           AWS_ACCESS_KEY_ID: ${{ steps.bw.outputs.R2_APPLY_ACCESS_KEY_ID }}
           R2_ACCOUNT_ID: ${{ steps.bw.outputs.R2_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ steps.bw.outputs.CLOUDFLARE_API_TOKEN }}
           # The bitwarden-secrets provider (ADR-0008) is configured from the
           # environment even for a saved-plan apply — CI machine account
           # token + org UUID, plus the Project id the secret resources file
@@ -129,6 +131,7 @@ jobs:
           BW_ACCESS_TOKEN: ${{ secrets.BWS_ACCESS_TOKEN }}
           BW_ORGANIZATION_ID: ${{ secrets.BWS_ORGANIZATION_ID }}
           TF_VAR_bws_infra_project_id: ${{ vars.BWS_INFRA_PROJECT_ID }}
+          TF_VAR_cloudflare_account_id: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           AWS_SECRET_ACCESS_KEY="$(printf '%s' "$R2_APPLY_STORAGE_TOKEN" | shasum -a 256 | cut -d' ' -f1)"
           export AWS_SECRET_ACCESS_KEY
