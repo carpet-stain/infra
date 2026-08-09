@@ -41,17 +41,21 @@ do NOT go there — only SSM, §4), then `direnv allow` and
 Both are described in full in AGENTS.md's Credentials section — this is
 just the bootstrap-time checklist for creating them the first time.
 
-- **Routine PAT** (fine-grained, github.com/settings/personal-access-tokens):
+- **Routine dev PAT** (fine-grained, github.com/settings/personal-access-tokens):
   Contents / Pull requests / Actions / Issues read-write, **not**
   Administration. (No Secrets/Variables scope — no `github_actions_secret`
   or `_variable` resource is tofu-managed, so no plan refresh needs it.)
-  Put the value in `.envrc.local`'s `GH_TOKEN`.
-- **Elevated session**: `gh auth login` with the full default scopes (or a
-  classic PAT with `repo` + `delete_repo`), used only via
-  `env -u GH_TOKEN -u GITHUB_TOKEN gh ...` / `just tofu-apply`. This is
-  what creates repos, applies rulesets, and handles anything the routine
-  PAT or a GitHub App can't reach (see AGENTS.md's Credentials section and
-  ADR-0004's Consequences for exactly what those are).
+  Log it into gh's keyring as the default account —
+  `gh auth login --with-token` (#151); `.envrc` derives
+  `GH_TOKEN`/`GITHUB_TOKEN` from it, no token literal in any file.
+- **Admin PAT** (fine-grained): Administration / Issues / Variables
+  read-write, **All repositories**, 1-year expiry — ADR-0013's spec, with
+  the rotation reminder §4 names. Stored at `/infra/gh-admin-token` (§4),
+  fetched only by `with-infra-secrets.sh --gh-admin` (`just tofu-apply`,
+  the branch-protection bootstrap, variable seeding). This is what creates
+  repos, applies rulesets, and handles anything the routine PAT or a
+  GitHub App can't reach (AGENTS.md's Credentials, ADR-0004's
+  Consequences).
 
 ## 3. Bootstrap the AWS account
 
@@ -165,11 +169,8 @@ every local run, including the very first `just tofu-iam init`. The values
 you have now come from §1; the three that don't exist yet
 (`gh-app-private-key` and the two `cloudflare-api-token*`) get the
 literal `PLACEHOLDER` and are populated in §7-§9. `gh-admin-token` is the
-fine-grained admin PAT (Administration/Issues/Variables read-write, all
-repos — ADR-0013's spec); mint it at github.com → Settings → Developer
-settings → Fine-grained tokens before this step, and note the 1-year
-expiry: set a rotation reminder, since the failure mode is a 401
-mid-apply. This is the
+admin PAT §2 minted; set a rotation reminder for its 1-year expiry —
+the failure mode is a 401 mid-apply. This is the
 highest-risk manual step: a placeholder silently read
 as the state passphrase fails state decryption, not loud (the wrapper and
 CI both guard against the literal `PLACEHOLDER`, nothing can guard against
@@ -240,18 +241,19 @@ users (`infra-local-apply`, `infra-local-read`), and the two tier keys
   ```
 
 - **Seed the role-ARN variables** the workflows assume (from
-  `just tofu-iam output`), under the elevated session:
+  `just tofu-iam output`), with the admin token (ADR-0013):
 
   ```sh
-  env -u GH_TOKEN -u GITHUB_TOKEN gh variable set AWS_PLAN_ROLE_ARN   # plan_role_arn output
-  env -u GH_TOKEN -u GITHUB_TOKEN gh variable set AWS_APPLY_ROLE_ARN  # apply_role_arn output
-  env -u GH_TOKEN -u GITHUB_TOKEN gh variable set AWS_VEND_ROLE_ARN   # vend_role_arn output
+  a() { scripts/with-infra-secrets.sh --gh-admin env -u GH_TOKEN "$@"; }
+  a gh variable set AWS_PLAN_ROLE_ARN   # plan_role_arn output
+  a gh variable set AWS_APPLY_ROLE_ARN  # apply_role_arn output
+  a gh variable set AWS_VEND_ROLE_ARN   # vend_role_arn output
   ```
 
 ## 6. First root apply — the governed repos and the parameter shells
 
 Populate `repos.tf`'s `local.repos`/`local.labels` with whatever repos and
-labels you're bringing under management. `ssm.tf` declares the eight
+labels you're bringing under management. `ssm.tf` declares the ten
 parameters §4 already created by hand, so adopt them with temporary
 `import` blocks (`id` = the parameter name, e.g. `/infra/tf-state-passphrase`;
 the repo's adopt-then-delete convention), then:

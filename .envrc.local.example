@@ -1,14 +1,13 @@
 # shellcheck shell=bash
-# Copy this file to .envrc.local and fill in your own token — a
-# fine-grained PAT with Contents/Pull requests/Actions/Issues read-write,
-# NOT Administration. (Secrets/Variables: Read-only is no longer needed:
-# no github_actions_secret or _variable resource is left for a plan to
-# refresh.) Anything that needs Administration rides the SSM-gated admin
-# token instead (ADR-0013): `scripts/with-infra-secrets.sh --gh-admin
-# env -u GH_TOKEN <cmd>` — drop GH_TOKEN since gh prefers it over the
-# GITHUB_TOKEN the wrapper exports — e.g. the branch-protection
-# bootstrap script.
-export GH_TOKEN=
+# Copy this file to .envrc.local and fill in the Cloudflare identifiers.
+# No GitHub token lives here (#151): the routine dev PAT — fine-grained,
+# Contents/Pull requests/Actions/Issues read-write, NOT Administration —
+# is gh's default keyring credential (`gh auth login --with-token`), and
+# .envrc derives GH_TOKEN/GITHUB_TOKEN from it. Anything that needs
+# Administration rides the SSM-gated admin token instead (ADR-0013):
+# `scripts/with-infra-secrets.sh --gh-admin env -u GH_TOKEN <cmd>` — drop
+# GH_TOKEN since gh prefers it over the GITHUB_TOKEN the wrapper exports —
+# e.g. the branch-protection bootstrap script.
 
 # The state passphrase and R2 read/write backend credentials are NOT here
 # (#59/ADR-0009, store moved to SSM by #126/ADR-0010) — they live in
