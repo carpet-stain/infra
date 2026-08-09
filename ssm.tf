@@ -26,17 +26,6 @@ locals {
   }
 }
 
-# Temporary (#144), delete once applied (README's adopting convention):
-# the -ro parameter is hand-created with its real value ahead of merge so
-# the PR's own plan job can fetch it — adopt it instead of failing on
-# ParameterAlreadyExists at apply. Note the import reads the real value
-# into state, unlike the shells' PLACEHOLDER — within ADR-0002's
-# encrypted-state stance.
-import {
-  to = aws_ssm_parameter.this["cloudflare-api-token-ro"]
-  id = "/infra/cloudflare-api-token-ro"
-}
-
 resource "aws_ssm_parameter" "this" {
   for_each = local.infra_parameters
 
