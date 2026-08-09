@@ -10,10 +10,12 @@ moved here (its ADR-0022/0024 record the founding decisions and the move).
 
 Tools come from Homebrew: `tenv` (installs the OpenTofu version
 `required_version` pins), `tflint` (via `terraform-linters/tap`), `trivy`,
-`lefthook`, `just`, `direnv`, `awscli`. Copy `.envrc.local.example` to
-`.envrc.local` and fill it (GitHub scoped token + Cloudflare identifiers),
-store the `infra-local-apply` access key in the login Keychain (gated —
-ADR-0010's #126 amendment), then `direnv allow` and `lefthook install`.
+`lefthook`, `just`, `direnv`, `awscli`. Log the routine dev PAT into gh's
+keyring (`gh auth login --with-token` — #151; `.envrc` derives the env
+copies from it), copy `.envrc.local.example` to `.envrc.local` and fill it
+(Cloudflare identifiers only), store the `infra-local-apply` access key in
+the login Keychain (gated — ADR-0010's #126 amendment), then `direnv allow`
+and `lefthook install`.
 Local `tofu` runs via `just`, which fetches the state passphrase + R2 creds
 from SSM at invocation.
 

@@ -154,14 +154,18 @@ since an automated unlock defeats the lock's purpose.
 > Concrete realization of **git.md** (credential scope) and **github.md**
 > (scoped PAT, explicit elevation) for this repo. See `.envrc.local.example`.
 
-- Routine work uses a **direnv-scoped fine-grained PAT** (Contents / Pull
-  requests / Actions / Issues read-write, **not** Administration) via
-  `.envrc.local` — never a full `gh auth login` session. So an agent driving
-  `gh` can't touch repo settings or branch protection. Secrets/Variables:
-  Read-only used to be needed so `tofu plan` could refresh the App-key
-  `github_actions_secret`, but that key left native secrets long ago (#47;
-  it lives in SSM now, ADR-0010) and no `github_actions_secret`/`_variable`
-  resource is tofu-managed anymore, so neither category is required now.
+- Routine work uses the **fine-grained dev PAT** (Contents / Pull requests /
+  Actions / Issues read-write, **not** Administration) — gh's default
+  keyring credential (#151), user-global, so the ambient posture in every
+  repo and bare shell is the minimal token. `.envrc` derives
+  `GH_TOKEN`/`GITHUB_TOKEN` from `gh auth token` for the tofu github
+  provider and git-cliff; no token literal lives in any repo file. An agent
+  driving `gh` still can't touch repo settings or branch protection.
+  Secrets/Variables: Read-only used to be needed so `tofu plan` could
+  refresh the App-key `github_actions_secret`, but that key left native
+  secrets long ago (#47; it lives in SSM now, ADR-0010) and no
+  `github_actions_secret`/`_variable` resource is tofu-managed anymore, so
+  neither category is required now.
 - Run local `tofu` through `just tofu` / `just tofu-apply` only, never bare.
   The elevated backend secrets (state passphrase, R2 read/write creds) are
   fetched from SSM at invocation by `scripts/with-infra-secrets.sh` (#126,
