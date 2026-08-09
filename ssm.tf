@@ -27,14 +27,6 @@ locals {
   }
 }
 
-# Temporary (delete once applied, README's adopting precedent): the
-# gh-admin-token parameter was hand-created ahead of this config (#152),
-# so adopt it instead of failing on ParameterAlreadyExists.
-import {
-  to = aws_ssm_parameter.this["gh-admin-token"]
-  id = "/infra/gh-admin-token"
-}
-
 resource "aws_ssm_parameter" "this" {
   for_each = local.infra_parameters
 
