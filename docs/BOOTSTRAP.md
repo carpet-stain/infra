@@ -159,12 +159,13 @@ end is the account's first non-root credential.
 
 ## 4. Hand-populate the SSM parameters
 
-Before any tofu: create the eight `/infra/*` parameters with the bootstrap
+Before any tofu: create the nine `/infra/*` parameters with the bootstrap
 key — the wrapper (`scripts/with-infra-secrets.sh`) reads four of them for
 every local run, including the very first `just tofu-iam init`. The values
-you have now come from §1; the two that don't exist yet (`gh-app-private-key`,
-`cloudflare-api-token`) get the literal `PLACEHOLDER` and are populated in
-§7-§9. This is the highest-risk manual step: a placeholder silently read
+you have now come from §1; the three that don't exist yet
+(`gh-app-private-key` and the two `cloudflare-api-token*`) get the
+literal `PLACEHOLDER` and are populated in §7-§9. This is the
+highest-risk manual step: a placeholder silently read
 as the state passphrase fails state decryption, not loud (the wrapper and
 CI both guard against the literal `PLACEHOLDER`, nothing can guard against
 a wrong real-looking value). Values ride a 0600 mktemp file
@@ -177,7 +178,8 @@ export AWS_ACCESS_KEY_ID=<the item's acct attribute> AWS_REGION=us-east-1
 
 tmp="$(mktemp)"
 trap 'rm -f "$tmp"' EXIT
-for param in gh-app-private-key cloudflare-api-token tf-state-passphrase \
+for param in gh-app-private-key cloudflare-api-token \
+  cloudflare-api-token-ro tf-state-passphrase \
   r2-account-id r2-plan-access-key-id r2-plan-storage-token \
   r2-apply-access-key-id r2-apply-storage-token; do
   # paste each real value when prompted (PLACEHOLDER where noted above);
@@ -312,7 +314,10 @@ one parameter.
 Create the least-privilege Cloudflare API token per
 `.envrc.local.example`'s comment (Zone Read / DNS Edit / R2 Storage Edit),
 put it in `.envrc.local`'s `CLOUDFLARE_API_TOKEN`, and populate
-`/infra/cloudflare-api-token` with the same value (§4's loop shape). Seed
+`/infra/cloudflare-api-token` with the same value (§4's loop shape).
+Create a second, read-only token for CI's plan/drift jobs (#144) — same
+custom-token flow, scopes Zone Read / DNS Read / R2 Storage Read, same
+zone scoping — and populate `/infra/cloudflare-api-token-ro`. Seed
 the account id: `env -u GH_TOKEN -u GITHUB_TOKEN gh variable set
 CLOUDFLARE_ACCOUNT_ID`.
 

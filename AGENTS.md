@@ -256,7 +256,9 @@ via `workflow_dispatch`) to resume.
 - Fetched from SSM: `TF_STATE_PASSPHRASE`, `R2_ACCOUNT_ID`, the R2 pair
   (plan/drift read `R2_PLAN_*` — a separate **Object Read only** token;
   apply and dispatch read the read/write `R2_APPLY_*`),
-  `GH_APP_PRIVATE_KEY`, and `CLOUDFLARE_API_TOKEN` (#9, the same token
+  `GH_APP_PRIVATE_KEY`, and the Cloudflare token — split the same way
+  (#144): plan/drift read the read-only `cloudflare-api-token-ro`, apply
+  and dispatch the edit-scoped `cloudflare-api-token` (#9, the same token
   `dns.tf`'s provider reads locally). Apply and dispatch mint an elevated
   App token from the key; the plan job mints an
   `administration:read`+`issues:read` token for the provider (the routine

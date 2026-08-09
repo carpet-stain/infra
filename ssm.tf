@@ -14,15 +14,27 @@ locals {
   # Parameter name under /infra/ → description — kebab-cased versions of
   # the env names their consumers export (docs/BOOTSTRAP.md §4).
   infra_parameters = {
-    "gh-app-private-key"     = "GitHub App private key .pem (ADR-0004/0005) — CI token minting"
-    "cloudflare-api-token"   = "Cloudflare API bearer token (#7) — the cloudflare provider"
-    "tf-state-passphrase"    = "OpenTofu state encryption passphrase (ADR-0002) — unrecoverable, re-import if lost"
-    "r2-account-id"          = "Cloudflare account id — forms the R2 S3 endpoint"
-    "r2-plan-access-key-id"  = "R2 Object-Read-only S3 access key id (plan/drift)"
-    "r2-plan-storage-token"  = "R2 Object-Read-only token — consumers sha256 it into the S3 secret (ADR-0002)"
-    "r2-apply-access-key-id" = "R2 Object Read & Write S3 access key id (apply)"
-    "r2-apply-storage-token" = "R2 Object Read & Write token — consumers sha256 it into the S3 secret (ADR-0002)"
+    "gh-app-private-key"      = "GitHub App private key .pem (ADR-0004/0005) — CI token minting"
+    "cloudflare-api-token"    = "Cloudflare API bearer token, edit-scoped (#7) — the cloudflare provider (apply/dispatch, local)"
+    "cloudflare-api-token-ro" = "Cloudflare API bearer token, read-only (#144) — the cloudflare provider (plan/drift)"
+    "tf-state-passphrase"     = "OpenTofu state encryption passphrase (ADR-0002) — unrecoverable, re-import if lost"
+    "r2-account-id"           = "Cloudflare account id — forms the R2 S3 endpoint"
+    "r2-plan-access-key-id"   = "R2 Object-Read-only S3 access key id (plan/drift)"
+    "r2-plan-storage-token"   = "R2 Object-Read-only token — consumers sha256 it into the S3 secret (ADR-0002)"
+    "r2-apply-access-key-id"  = "R2 Object Read & Write S3 access key id (apply)"
+    "r2-apply-storage-token"  = "R2 Object Read & Write token — consumers sha256 it into the S3 secret (ADR-0002)"
   }
+}
+
+# Temporary (#144), delete once applied (README's adopting convention):
+# the -ro parameter is hand-created with its real value ahead of merge so
+# the PR's own plan job can fetch it — adopt it instead of failing on
+# ParameterAlreadyExists at apply. Note the import reads the real value
+# into state, unlike the shells' PLACEHOLDER — within ADR-0002's
+# encrypted-state stance.
+import {
+  to = aws_ssm_parameter.this["cloudflare-api-token-ro"]
+  id = "/infra/cloudflare-api-token-ro"
 }
 
 resource "aws_ssm_parameter" "this" {

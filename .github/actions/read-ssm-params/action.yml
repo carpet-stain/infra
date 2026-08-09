@@ -26,6 +26,9 @@ outputs:
   CLOUDFLARE_API_TOKEN:
     description: /infra/cloudflare-api-token
     value: ${{ steps.fetch.outputs.CLOUDFLARE_API_TOKEN }}
+  CLOUDFLARE_API_TOKEN_RO:
+    description: /infra/cloudflare-api-token-ro
+    value: ${{ steps.fetch.outputs.CLOUDFLARE_API_TOKEN_RO }}
   TF_STATE_PASSPHRASE:
     description: /infra/tf-state-passphrase
     value: ${{ steps.fetch.outputs.TF_STATE_PASSPHRASE }}
