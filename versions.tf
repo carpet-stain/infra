@@ -21,6 +21,10 @@ terraform {
       source  = "cloudflare/cloudflare"
       version = "~> 5.0"
     }
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 6.0"
+    }
   }
 
   backend "s3" {
@@ -70,3 +74,22 @@ provider "bitwarden-secrets" {
 # different credential from the R2 *S3* token the state backend uses
 # (R2_STORAGE_TOKEN, ADR-0002), which is R2's separate access-key flow.
 provider "cloudflare" {}
+
+# AWS SSM Parameter Store, the machine-secret store (ADR-0010, #121).
+# us-east-1 is the recorded region choice (docs/BOOTSTRAP.md §9). Credential
+# paths differ by caller and neither may ride the other's lane:
+#  - CI: the env chain — short-lived OIDC creds exported by
+#    configure-aws-credentials. Never Tofu variables: a saved-plan apply
+#    (ADR-0003) replays variable values baked at plan time, which would
+#    resurrect the plan job's expired read-only creds at apply. The R2
+#    backend cedes the AWS_* env names to this (its creds move to
+#    -backend-config flags in the workflows).
+#  - Local: explicit vars from the Keychain-fetched bootstrap key
+#    (with-infra-secrets.sh) — explicit config outranks env, which locally
+#    still carries the R2 backend credentials. Local applies are always
+#    fresh plan+apply, so baking is moot there.
+provider "aws" {
+  region     = "us-east-1"
+  access_key = var.aws_access_key_id
+  secret_key = var.aws_secret_access_key
+}

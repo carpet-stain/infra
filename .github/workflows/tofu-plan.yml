@@ -16,10 +16,6 @@ on:
     types: [opened, reopened, synchronize, ready_for_review]
     branches: ["main"]
 
-permissions:
-  contents: read
-  pull-requests: write
-
 concurrency:
   group: tofu-plan-${{ github.event.pull_request.number }}
   cancel-in-progress: true
@@ -28,6 +24,14 @@ jobs:
   plan:
     name: tofu plan
     runs-on: ubuntu-latest
+    # Job-scoped, not workflow-scoped, so id-token's audit trail stays per
+    # job (ADR-0010's step 5). id-token: write lets this job present its
+    # OIDC sub (repo:carpet-stain/infra:pull_request) to assume the
+    # read-only infra-plan-read role — no standing AWS credential exists.
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write
     # Same per-job draft gate as tofu.yml/pr-guards.yml: quiet on WIP drafts,
     # re-triggered for real at ready_for_review.
     if: github.event.pull_request.draft == false
@@ -98,8 +102,20 @@ jobs:
           permission-administration: read
           permission-issues: read
 
-      # Mirrors .envrc's own derivation exactly (ADR-0002): the R2 S3 secret
-      # is sha256(storage token), the endpoint carries the account ID, and
+      # The aws provider's credential (ADR-0010, #121): OIDC-assumed
+      # read-only role, exported into AWS_* env for the provider's env
+      # chain — deliberately not Tofu variables, which a saved-plan apply
+      # would replay stale (see versions.tf's provider comment). The R2
+      # backend cedes the AWS_* names to this; its credentials move to
+      # -backend-config flags in the init step below.
+      - name: Assume infra-plan-read via OIDC
+        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
+        with:
+          role-to-assume: ${{ vars.AWS_PLAN_ROLE_ARN }}
+          aws-region: us-east-1
+
+      # Mirrors .envrc's own derivation (ADR-0002): the R2 S3 secret is
+      # sha256(storage token), the endpoint carries the account ID, and
       # TF_ENCRYPTION is built from the shared passphrase via plain bash
       # string concatenation — never GitHub Actions `${{ }}` template
       # interpolation inside a run: script, which would risk the secret
@@ -112,13 +128,12 @@ jobs:
           # a standing PAT (#59). Confined to this step, not job-wide.
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
           TF_STATE_PASSPHRASE: ${{ steps.bw-backend.outputs.TF_STATE_PASSPHRASE }}
+          R2_PLAN_ACCESS_KEY_ID: ${{ steps.bw-backend.outputs.R2_PLAN_ACCESS_KEY_ID }}
           R2_PLAN_STORAGE_TOKEN: ${{ steps.bw-backend.outputs.R2_PLAN_STORAGE_TOKEN }}
-          AWS_ACCESS_KEY_ID: ${{ steps.bw-backend.outputs.R2_PLAN_ACCESS_KEY_ID }}
           R2_ACCOUNT_ID: ${{ steps.bw-backend.outputs.R2_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ steps.bw-backend.outputs.CLOUDFLARE_API_TOKEN }}
         run: |
-          AWS_SECRET_ACCESS_KEY="$(printf '%s' "$R2_PLAN_STORAGE_TOKEN" | shasum -a 256 | cut -d' ' -f1)"
-          export AWS_SECRET_ACCESS_KEY
+          r2_secret_key="$(printf '%s' "$R2_PLAN_STORAGE_TOKEN" | shasum -a 256 | cut -d' ' -f1)"
           export AWS_ENDPOINT_URL_S3="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
           export TF_ENCRYPTION='
           key_provider "pbkdf2" "state" {
@@ -135,7 +150,13 @@ jobs:
             method   = method.aes_gcm.state
             enforced = true
           }'
-          tofu init -input=false
+          # R2 credentials as explicit backend config, not AWS_* env — the
+          # aws provider owns those names now (OIDC step above), and
+          # explicit backend config outranks the env chain, so the two
+          # credential sets never collide.
+          tofu init -input=false \
+            -backend-config="access_key=${R2_PLAN_ACCESS_KEY_ID}" \
+            -backend-config="secret_key=${r2_secret_key}"
           # -lock=false: this job's R2 credential is read-only by design
           # (#24's acceptance criterion), so it can't acquire the S3
           # backend's write-based lock at all — and doesn't need to, since a

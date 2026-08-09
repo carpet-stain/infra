@@ -17,6 +17,29 @@ variable "bws_infra_project_id" {
   EOT
 }
 
+variable "aws_access_key_id" {
+  type        = string
+  default     = null
+  description = <<-EOT
+    Access key id of the AWS bootstrap/break-glass key (docs/BOOTSTRAP.md
+    §9), fed by scripts/with-infra-secrets.sh for local runs. Null in CI —
+    there the aws provider falls back to the env chain and picks up the
+    OIDC credentials (see the provider block for why CI credentials must
+    never ride variables).
+  EOT
+}
+
+variable "aws_secret_access_key" {
+  type        = string
+  default     = null
+  sensitive   = true
+  description = <<-EOT
+    Secret half of the AWS bootstrap key, Keychain-fetched at invocation
+    by scripts/with-infra-secrets.sh (never ambient, never committed).
+    Null in CI, same as aws_access_key_id.
+  EOT
+}
+
 variable "cloudflare_account_id" {
   type        = string
   nullable    = false
