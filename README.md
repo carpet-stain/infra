@@ -26,7 +26,7 @@ state backend yet — is [`docs/BOOTSTRAP.md`](docs/BOOTSTRAP.md).
 ```sh
 just tofu init          # once per checkout
 just tofu plan          # routine scoped token — read-only
-just tofu-apply         # elevated session token (Administration scope)
+just tofu-apply         # admin token from gated SSM (ADR-0013)
 ```
 
 Everything must run from inside the repo — direnv supplies the backend

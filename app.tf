@@ -45,9 +45,10 @@ removed {
 # which `tofu plan` needs to do for every resource in state, not just
 # changed ones. The value is static and essentially never changes, so
 # losing tofu management costs little; set by hand if it's ever missing:
-# `gh variable set GH_APP_CLIENT_ID --body <client id>` under the elevated
-# session. Not secret — GitHub's own guidance is the client ID is safe to
-# expose (visible on the App's public settings page).
+# `scripts/with-infra-secrets.sh --gh-admin env -u GH_TOKEN gh variable set
+# GH_APP_CLIENT_ID --body <client id>` (ADR-0013). Not secret — GitHub's
+# own guidance is the client ID is safe to expose (visible on the App's
+# public settings page).
 removed {
   from = github_actions_variable.app_client_id
 

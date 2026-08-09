@@ -16,13 +16,31 @@
 #                break-glass key, for `just tofu-iam` only; reactivate it in
 #                the console first (docs/BOOTSTRAP.md), deactivate after.
 #
-# usage: scripts/with-infra-secrets.sh [--bootstrap] <command> [args...]
+# --gh-admin additionally fetches /infra/gh-admin-token and exports it as
+# GITHUB_TOKEN (ADR-0013): `just tofu-apply` and the branch-protection
+# bootstrap script ride it; plain `just tofu` deliberately doesn't, so a
+# plan process never holds the admin token. Default identity only — the
+# iam/ module has no github provider, so --bootstrap never needs it.
+#
+# usage: scripts/with-infra-secrets.sh [--bootstrap|--gh-admin] <command> [args...]
 set -euo pipefail
 
 item=infra-aws-local-apply
-if [[ ${1:-} == --bootstrap ]]; then
-  item=infra-aws-bootstrap
+gh_admin=""
+while [[ ${1:-} == --* ]]; do
+  case $1 in
+    --bootstrap) item=infra-aws-bootstrap ;;
+    --gh-admin) gh_admin=1 ;;
+    *)
+      echo "with-infra-secrets: unknown flag '$1'" >&2
+      exit 1
+      ;;
+  esac
   shift
+done
+if [[ -n $gh_admin && $item == infra-aws-bootstrap ]]; then
+  echo "with-infra-secrets: --gh-admin and --bootstrap don't combine — iam/ has no github provider" >&2
+  exit 1
 fi
 
 # The one gated read per item shape (infra-aws-bootstrap's precedent,
@@ -40,10 +58,12 @@ aws_secret="$(security find-generic-password -s "$item" -w)"
 # call's environment — the ambient AWS_* names are claimed by the R2 backend
 # below, and the aws provider gets these same values as explicit TF_VARs
 # (the one slot that outranks the env chain).
+names=(/infra/tf-state-passphrase /infra/r2-apply-access-key-id
+  /infra/r2-apply-storage-token /infra/r2-account-id)
+[[ -n $gh_admin ]] && names+=(/infra/gh-admin-token)
 params="$(AWS_ACCESS_KEY_ID="$aws_key_id" AWS_SECRET_ACCESS_KEY="$aws_secret" \
   AWS_REGION=us-east-1 aws ssm get-parameters --with-decryption --output json \
-  --names /infra/tf-state-passphrase /infra/r2-apply-access-key-id \
-  /infra/r2-apply-storage-token /infra/r2-account-id)"
+  --names "${names[@]}")"
 if [[ "$(jq -r '.InvalidParameters | length' <<<"$params")" != "0" ]]; then
   echo "with-infra-secrets: missing SSM parameters: $(jq -r '.InvalidParameters | join(" ")' <<<"$params")" >&2
   exit 1
@@ -54,12 +74,17 @@ passphrase="$(val tf-state-passphrase)"
 r2_key="$(val r2-apply-access-key-id)"
 r2_token="$(val r2-apply-storage-token)"
 r2_account="$(val r2-account-id)"
+values=(passphrase r2_key r2_token r2_account)
+if [[ -n $gh_admin ]]; then
+  gh_admin_token="$(val gh-admin-token)"
+  values+=(gh_admin_token)
+fi
 
 # jq -e above fails closed on a missing name; this catches ssm.tf's shell
 # placeholder or an empty value, either of which would otherwise
 # sha256/encrypt into a silently-wrong config (docs/BOOTSTRAP.md's
 # population step).
-for name in passphrase r2_key r2_token r2_account; do
+for name in "${values[@]}"; do
   [[ -n "${!name}" && "${!name}" != "PLACEHOLDER" ]] || {
     echo "with-infra-secrets: '$name' came back empty or PLACEHOLDER from SSM" >&2
     exit 1
@@ -68,6 +93,11 @@ done
 
 export TF_VAR_aws_access_key_id="$aws_key_id"
 export TF_VAR_aws_secret_access_key="$aws_secret"
+
+# The github provider reads GITHUB_TOKEN (never GH_TOKEN), so the ambient
+# routine token stays untouched — gh-driving consumers (the bootstrap
+# script) must still drop GH_TOKEN themselves, since gh prefers it.
+[[ -n $gh_admin ]] && export GITHUB_TOKEN="$gh_admin_token"
 
 # Derive the R2 S3 pair, endpoint, and enforced encryption exactly as .envrc
 # did before these moved out of it (ADR-0002): the S3 secret is sha256 of the

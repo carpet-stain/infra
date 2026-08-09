@@ -37,11 +37,11 @@ tofu *args:
 tofu-iam *args:
     scripts/with-infra-secrets.sh --bootstrap tofu -chdir=iam {{ args }}
 
-# Apply under the elevated session token — mutations need Administration,
-# which the routine GH_TOKEN deliberately lacks — with the same
-# Keychain-gated backend-secret fetch wrapped around it.
+# Apply under the admin token fetched from gated SSM (ADR-0013) —
+# mutations need Administration, which the routine GH_TOKEN deliberately
+# lacks. One Keychain prompt covers backend secrets and admin token both.
 tofu-apply *args:
-    scripts/with-infra-secrets.sh env GITHUB_TOKEN="$(env -u GH_TOKEN -u GITHUB_TOKEN gh auth token)" tofu apply {{ args }}
+    scripts/with-infra-secrets.sh --gh-admin tofu apply {{ args }}
 
 # List recipes when invoked with no arguments.
 _default:

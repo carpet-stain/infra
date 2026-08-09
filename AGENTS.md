@@ -124,9 +124,9 @@ current `main`, no saved artifact needed) after the fact — never revert
 the merge.
 
 **A crashed apply leaving a stale R2 lockfile**: cleared by hand with
-`tofu force-unlock <id>` (the id is in the error message) under the
-elevated session — deliberately not automated, since an automated unlock
-defeats the lock's purpose.
+`just tofu force-unlock <id>` (the id is in the error message; only the
+Keychain-gated backend creds are needed) — deliberately not automated,
+since an automated unlock defeats the lock's purpose.
 
 ## Local tooling
 
@@ -183,13 +183,16 @@ defeats the lock's purpose.
   variables — a saved-plan apply would replay them stale), and the R2
   backend creds ride `-backend-config` flags instead of env there.
 - Elevate explicitly only for the one action that needs admin:
-  `env -u GH_TOKEN -u GITHUB_TOKEN gh ...` — both vars, since `.envrc` aliases
-  `GITHUB_TOKEN` to the same scoped token, so dropping `GH_TOKEN` alone is a no-op.
+  `scripts/with-infra-secrets.sh --gh-admin env -u GH_TOKEN <cmd>` fetches the
+  fine-grained admin PAT from `/infra/gh-admin-token` behind the same Keychain
+  gate and exports it as `GITHUB_TOKEN` (ADR-0013). Drop `GH_TOKEN` for
+  gh-driving commands — gh prefers it over `GITHUB_TOKEN`; the tofu provider
+  reads only `GITHUB_TOKEN`, so `just tofu-apply` needs no unset.
 - `just tofu plan` uses the routine `GH_TOKEN` for the github provider (read);
-  `just tofu-apply` swaps in the elevated session token (Administration) — both
-  wrapped by the Keychain-gated backend-secret fetch. Losing the passphrase
-  means re-importing, not recovering (ADR-0002); it lives in SSM now
-  (`/infra/tf-state-passphrase`).
+  `just tofu-apply` rides `--gh-admin` for the Administration-scoped token —
+  both wrapped by the Keychain-gated backend-secret fetch, one prompt. Losing
+  the passphrase means re-importing, not recovering (ADR-0002); it lives in
+  SSM now (`/infra/tf-state-passphrase`).
 - A GitHub App (ADR-0004, `app.tf`) is registered and installed on every
   repo in `local.repos` for future CI-side credential delegation — both by
   hand, not tofu-managed. Installation-repository membership specifically
@@ -218,7 +221,8 @@ defeats the lock's purpose.
 > `just tofu-iam` with the bootstrap key.
 
 Two tiers, two KMS keys, path as the boundary: `/infra/*` (crown jewels —
-App key, state passphrase, R2 pairs, Cloudflare token; `alias/infra-secrets`)
+App key, admin PAT, state passphrase, R2 pairs, Cloudflare token;
+`alias/infra-secrets`)
 and `/runtime/*` (the rotating vended token; `alias/runtime-secrets`). Every
 identity needs both the SSM path grant and `kms:Decrypt` on that tier's key —
 two independent fences. The audit invariant (ADR-0010 as amended by #126):
@@ -272,8 +276,10 @@ via `workflow_dispatch`) to resume.
   trust policy's sub conditions are the gate): `AWS_PLAN_ROLE_ARN`,
   `AWS_APPLY_ROLE_ARN`, `AWS_VEND_ROLE_ARN`.
 
-Seed the variables once via the elevated session (`gh variable set`); the
-from-zero order lives in `docs/BOOTSTRAP.md`. None of this can be
+Seed the variables once with the admin token
+(`scripts/with-infra-secrets.sh --gh-admin env -u GH_TOKEN gh variable set …`,
+ADR-0013 — its Variables write exists for exactly this); the from-zero order
+lives in `docs/BOOTSTRAP.md`. None of this can be
 tofu-managed — a repo can't provision its own CI's first credentials via
 its own CI. No Dependabot secrets mirror remains: #89's exposure was the
 plan job reading `secrets.*` on a Dependabot-actored run, and no workflow
