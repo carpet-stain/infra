@@ -90,11 +90,6 @@ jobs:
           R2_APPLY_STORAGE_TOKEN: ${{ steps.ssm.outputs.R2_APPLY_STORAGE_TOKEN }}
           R2_ACCOUNT_ID: ${{ steps.ssm.outputs.R2_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ steps.ssm.outputs.CLOUDFLARE_API_TOKEN }}
-          # The fresh plan refreshes the bitwarden-secrets resources
-          # (ADR-0008), so the provider needs its environment auth here too.
-          BW_ACCESS_TOKEN: ${{ secrets.BWS_ACCESS_TOKEN }}
-          BW_ORGANIZATION_ID: ${{ secrets.BWS_ORGANIZATION_ID }}
-          TF_VAR_bws_infra_project_id: ${{ vars.BWS_INFRA_PROJECT_ID }}
           TF_VAR_cloudflare_account_id: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           r2_secret_key="$(printf '%s' "$R2_APPLY_STORAGE_TOKEN" | shasum -a 256 | cut -d' ' -f1)"

@@ -15,7 +15,7 @@ real_file=".envrc.local"
 # Strip the value from any `export VAR=...` line, keeping the `export VAR=`
 # prefix so variable-name/comment drift is still caught.
 # [A-Za-z0-9_], not [A-Z_]: a digit or lowercase letter in a var name
-# (R2_..., TF_VAR_bws_...) must not exempt its value from stripping — the
+# (R2_..., TF_VAR_cloudflare_...) must not exempt its value from stripping — the
 # drift diff below prints to stderr, so an unstripped line would leak the
 # credential it holds.
 strip_values() { sed -E 's/^(export [A-Za-z0-9_]+=).*/\1/' "$1"; }

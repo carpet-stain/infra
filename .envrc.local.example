@@ -2,35 +2,27 @@
 # Copy this file to .envrc.local and fill in your own token — a
 # fine-grained PAT with Contents/Pull requests/Actions/Issues read-write,
 # NOT Administration. (Secrets/Variables: Read-only is no longer needed:
-# the App key moved to Bitwarden, #47/ADR-0008, so no github_actions_secret
-# or _variable resource is left for a plan to refresh.) Use
-# `env -u GH_TOKEN -u GITHUB_TOKEN gh ...` for anything that needs the
-# full-admin session instead (both vars, since .envrc aliases GITHUB_TOKEN
-# to this same scoped token and gh prefers it) — e.g. the branch-protection
-# bootstrap script.
+# no github_actions_secret or _variable resource is left for a plan to
+# refresh.) Use `env -u GH_TOKEN -u GITHUB_TOKEN gh ...` for anything that
+# needs the full-admin session instead (both vars, since .envrc aliases
+# GITHUB_TOKEN to this same scoped token and gh prefers it) — e.g. the
+# branch-protection bootstrap script.
 export GH_TOKEN=
 
 # The state passphrase and R2 read/write backend credentials are NOT here
-# anymore (#59, ADR-0009) — they live only in Bitwarden and are fetched at
-# invocation, gated behind the macOS Keychain, by
-# scripts/with-infra-secrets.sh. So always run tofu via `just tofu` /
-# `just tofu-apply`, never bare, and expect a Keychain "Allow" prompt.
+# (#59/ADR-0009, store moved to SSM by #126/ADR-0010) — they live in
+# /infra/* SSM parameters and are fetched at invocation, gated behind the
+# macOS Keychain, by scripts/with-infra-secrets.sh. So always run tofu via
+# `just tofu` / `just tofu-apply`, never bare, and expect a Keychain
+# "Allow" prompt.
 #
-# One-time setup — store the `infra` machine-account token (the same
-# read/write-on-infra token CI holds as BWS_ACCESS_TOKEN) in the login
-# Keychain WITHOUT an app ACL, so every read prompts (that's the gate):
-#     security add-generic-password -s infra-bws -a "$USER" -w
-#   (paste the token at the prompt; omitting -A is deliberate.)
-# Needs the `bws` CLI — not on Homebrew; download the release binary matching
-# the version vend-token.yml pins (macOS: bws-<arch>-apple-darwin), or
-# `cargo install bws`. Rotate the Keychain item by re-running the command
-# above with `-U`.
-
-# Bitwarden identifiers the provider needs — not secrets, so they stay here
-# rather than in the Keychain fetch. NOTE the prefix: the provider reads BW_*;
-# the `bws` CLI reads BWS_* — the wrapper sets both from the Keychain token.
-export BW_ORGANIZATION_ID=
-export TF_VAR_bws_infra_project_id=
+# One-time setup — store the infra-local-apply IAM user's access key in
+# the login Keychain WITHOUT an app ACL, so every read prompts (that's the
+# gate). The key id rides the account attribute, the secret is the
+# password (docs/BOOTSTRAP.md has the key-creation console step):
+#     security add-generic-password -s infra-aws-local-apply -a <ACCESS_KEY_ID> -w
+#   (paste the secret access key at the prompt; omitting -A is deliberate.)
+# Rotate the Keychain item by re-running the command above with -U.
 
 # Cloudflare provider (#7, epic #6) — a least-privilege API token the
 # `cloudflare` provider reads directly, for managing the R2 state bucket

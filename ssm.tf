@@ -1,8 +1,7 @@
 # The /infra/* SSM parameters (ADR-0010, #121) — existence and metadata
-# only, the same existence-never-value shape the bitwarden-secrets
-# resources use. Values are hand-populated from their live BWS copies
-# (docs/BOOTSTRAP.md §10) and ignored here: SSM has no value-optional
-# shape, so a placeholder plus ignore_changes is the closest analog.
+# only. Values are hand-populated (docs/BOOTSTRAP.md §4) and ignored here:
+# SSM has no value-optional shape, so a placeholder plus ignore_changes is
+# the closest analog to declaring existence without the value.
 # The KMS key is named by its literal alias — no cross-state lookup into
 # the iam/ module is needed for the reference to resolve (ADR-0010).
 #
@@ -12,8 +11,8 @@
 # rotating tier, so ADR-0010's role×path matrix holds exactly.
 
 locals {
-  # Parameter name under /infra/ → description. Names mirror their
-  # Bitwarden `infra`-Project keys (docs/BOOTSTRAP.md §6), kebab-cased.
+  # Parameter name under /infra/ → description — kebab-cased versions of
+  # the env names their consumers export (docs/BOOTSTRAP.md §4).
   infra_parameters = {
     "gh-app-private-key"     = "GitHub App private key .pem (ADR-0004/0005) — CI token minting"
     "cloudflare-api-token"   = "Cloudflare API bearer token (#7) — the cloudflare provider"

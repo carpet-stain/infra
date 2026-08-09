@@ -2,9 +2,10 @@
 # (/infra/* crown jewels, /runtime/* rotating tier) and every role needs
 # both the SSM path grant AND kms:Decrypt on that tier's key — two
 # independent fences, so one misconfigured policy can't cross tiers. The
-# audit invariant: no identity a local/agent shell holds resolves
-# kms:Decrypt on alias/infra-secrets, and local and CI identities share no
-# grant.
+# audit invariant (as amended by #126): no *silently-readable* identity a
+# local/agent shell holds resolves kms:Decrypt on alias/infra-secrets —
+# infra-local-apply's key exists but is Keychain-prompt-gated, a
+# human-in-the-loop read — and local and CI identities share no grant.
 
 data "aws_caller_identity" "this" {}
 
@@ -48,6 +49,25 @@ locals {
       Sid      = "DecryptInfraTier"
       Effect   = "Allow"
       Action   = "kms:Decrypt"
+      Resource = aws_kms_key.infra_secrets.arn
+    },
+  ]
+
+  # The crown-jewel write surface — shared verbatim by the infra-apply CI
+  # role and the infra-local-apply user (#126): both apply the same root
+  # module, so their grants are identical; how the credential is fenced
+  # (OIDC sub condition vs Keychain prompt) is the only difference.
+  infra_write_statements = [
+    {
+      Sid      = "WriteInfraParameters"
+      Effect   = "Allow"
+      Action   = ["ssm:PutParameter", "ssm:DeleteParameter", "ssm:AddTagsToResource", "ssm:RemoveTagsFromResource"]
+      Resource = "${local.ssm_param_arn}/infra/*"
+    },
+    {
+      Sid      = "EncryptInfraTier"
+      Effect   = "Allow"
+      Action   = ["kms:Encrypt", "kms:GenerateDataKey"]
       Resource = aws_kms_key.infra_secrets.arn
     },
   ]
@@ -144,21 +164,8 @@ resource "aws_iam_role_policy" "apply" {
   name = "read-write-infra-tier"
   role = aws_iam_role.apply.id
   policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = concat(local.infra_read_statements, [
-      {
-        Sid      = "WriteInfraParameters"
-        Effect   = "Allow"
-        Action   = ["ssm:PutParameter", "ssm:DeleteParameter", "ssm:AddTagsToResource", "ssm:RemoveTagsFromResource"]
-        Resource = "${local.ssm_param_arn}/infra/*"
-      },
-      {
-        Sid      = "EncryptInfraTier"
-        Effect   = "Allow"
-        Action   = ["kms:Encrypt", "kms:GenerateDataKey"]
-        Resource = aws_kms_key.infra_secrets.arn
-      },
-    ])
+    Version   = "2012-10-17"
+    Statement = concat(local.infra_read_statements, local.infra_write_statements)
   })
 }
 
@@ -264,6 +271,30 @@ resource "aws_iam_user_policy" "local_read" {
         Resource = aws_kms_key.runtime_secrets.arn
       },
     ]
+  })
+}
+
+# The local elevated identity (ADR-0010's #126 amendment): routine local
+# tofu runs must refresh the /infra/* SecureStrings and feed the wrapper
+# the backend secrets, which needs crown-jewel read+write — the same
+# surface as the infra-apply CI role. The fence is the Keychain prompt:
+# the access key (hand-created in the console, like infra-local-read's) is
+# stored without an app ACL, so every read is a human click — no silent
+# local path to alias/infra-secrets exists, which is the amended audit
+# invariant. The bootstrap key stays deactivated break-glass; this user
+# holds no iam:*/kms:Put*, so routine work can't touch the trust roots.
+# Same direct-user-policy reasoning as infra-local-read above.
+#trivy:ignore:AVD-AWS-0143
+resource "aws_iam_user" "local_apply" {
+  name = "infra-local-apply"
+}
+
+resource "aws_iam_user_policy" "local_apply" {
+  name = "read-write-infra-tier"
+  user = aws_iam_user.local_apply.name
+  policy = jsonencode({
+    Version   = "2012-10-17"
+    Statement = concat(local.infra_read_statements, local.infra_write_statements)
   })
 }
 

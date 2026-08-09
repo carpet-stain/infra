@@ -1,138 +1,114 @@
 # Consuming secrets from another repo
 
 For a contributor giving a **different** repo (not `infra`) its first secret,
-or wiring one to fetch a secret at runtime. ADR-0008 and ADR-0009 record the
-design — two Projects, three Machine Accounts, why the split is load-bearing,
-how `infra` itself consumes it. Those are `infra`'s own decision records; this
-is the consumer-facing synthesis, so it **points at** them rather than
-restating the reasoning. Read ADR-0008 for the store's shape and ADR-0009 for
-the runtime-fetch model; this doc answers "which Project, which account, how do
-I fetch it, who do I ask."
+or wiring one to fetch a secret at runtime. ADR-0010 records the design —
+SSM Parameter Store, two KMS-fenced tiers, per-consumer IAM identities.
+That's `infra`'s own decision record; this is the consumer-facing synthesis,
+so it **points at** it rather than restating the reasoning. This doc answers
+"which path, which identity, how do I fetch it, how do I get a new one."
 
 ## What a different repo actually gets today
 
-One thing: **read access to the vended GitHub token** in the `vended-tokens`
-Project. That token is a narrowly-scoped, rotating credential
-(`{contents, issues, pull_requests, actions, workflows}: write` plus
-`checks: read`, no `administration`, over the subset of managed repos with a live
-vended-token consumer — not every repo in `local.repos` minus `infra`;
-see `vend-token.yml`'s own comment for the current list and why each repo
-is on it), republished every 5 minutes by `vend-token.yml` on a
-best-effort basis — GitHub's `schedule:` trigger can be delayed on public
-repos, so this is not a hard freshness guarantee (ADR-0008's issue-76
-amendment; issue #98 tracks whether a harder guarantee is possible at
-all). It exists precisely so a local or agent shell in another repo can do
-routine cross-repo GitHub work without ever touching the App's raw private
-key (ADR-0008; the live consumer is `dotfiles`#377).
+One thing: **read access to the vended GitHub token** at
+`/runtime/vended-token`. That token is a narrowly-scoped, rotating
+credential (write on the managed repos with a live vended-token consumer,
+no `administration` — `vend-token.yml`'s own comment is the current list
+and why each repo is on it), republished every 5 minutes by
+`vend-token.yml` on a best-effort basis — GitHub's `schedule:` trigger can
+be delayed on public repos, so this is not a hard freshness guarantee
+(ADR-0008's issue-76 amendment records the measurement; the store moved,
+the cadence physics didn't). It exists precisely so a local or agent shell
+in another repo can do routine cross-repo GitHub work without ever touching
+the App's raw private key (#51; the live consumer is `dotfiles`#377).
 
-It does **not** get a place to store its own arbitrary new secret. See
-[Storing a genuinely new secret](#storing-a-genuinely-new-secret) — under the
-current grant structure that is not self-service, and inventing ad hoc storage
-(a literal in `.envrc.local`, a native CI secret) is the exact anti-pattern
-ADR-0008/0009 exist to close.
+## Which path — and why it's a security boundary
 
-## Which Project — and why it's a security boundary
+Access control is IAM-per-path with a KMS key per tier (ADR-0010): reading
+a parameter needs both the SSM path grant and `kms:Decrypt` on that tier's
+key — two independent fences.
 
-Bitwarden access control is **Project-granular only**: a Machine Account holds
-read (or read/write) on a whole Project, so anything a credential can reach a
-Project for, it can read _every_ secret in that Project for (ADR-0008). The
-Project a secret lives in is therefore a security boundary, not organization.
+| Path         | Holds                                                                            | Who can read it                                                    |
+| ------------ | -------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| `/infra/*`   | Crown jewels — the App private key, state passphrase, R2 creds, Cloudflare token | `infra`'s CI roles and its prompt-gated local identity — never you |
+| `/runtime/*` | The rotating vended GitHub token                                                 | Any cross-repo consumer (`infra-local-read`)                       |
 
-| Project         | Holds                                                                            | Who can read it                                                 |
-| --------------- | -------------------------------------------------------------------------------- | --------------------------------------------------------------- |
-| `infra`         | Crown jewels — the App private key, state passphrase, R2 creds, Cloudflare token | `infra` CI and (Keychain-gated) `infra`'s own local `tofu` only |
-| `vended-tokens` | The one rotating vended GitHub token                                             | Any cross-repo consumer (the Local account)                     |
+Don't ask for another repo's secret to land under `/infra/*` because it's
+convenient — that tier is deliberately unreachable from any local/agent
+shell (the audit invariant in `iam/main.tf`'s header), and widening a grant
+on it to reach a lesser secret collapses the boundary that keeps the raw
+App key out of those shells.
 
-Don't put another repo's secret in `infra` because it's convenient — that
-Project is deliberately unreachable from any local/agent shell, and widening a
-grant on it to reach a lesser secret collapses the boundary that keeps the raw
-key out of those shells. See ADR-0008's Machine-Account-to-Project grant table
-(mirrored in `AGENTS.md` as the auditable spec) for the exact grants.
+## Which identity you get
 
-## Which Machine Account you get
+The **`infra-local-read`** IAM user — `ssm:GetParameter` on `/runtime/*`
+plus `kms:Decrypt` on the runtime key, and nothing else. Its access key is
+hand-created in the console and Keychain-stored with a silent-read ACL
+(routine, not elevated — `dotfiles`' AGENTS.md Credentials has the setup).
+`infra`'s CI roles and its local-apply/bootstrap users are not for reuse:
+they hold crown-jewel or trust-root grants, the boundary the design
+protects.
 
-The **Local** account — `read` on `vended-tokens`, and nothing else. That is
-the only account available to cross-repo work; `infra`'s CI and Vending
-accounts are not for reuse (they hold write grants on `infra`, the boundary the
-whole design protects).
-
-You cannot get a new dedicated account. The free tier caps at **three** Machine
-Accounts and all three are in use (ADR-0008) — no headroom. So a new consumer
-either reuses the vended path above or triggers a design conversation, not a
-self-service grant (below).
+Unlike the Bitwarden era, there is **no account-cap scarcity** (ADR-0010):
+a genuinely new consumer class gets its own IAM identity and path grant —
+a design conversation and a PR, not a budget negotiation.
 
 ## Runtime recipes
 
-The general fetch pattern, shown with the vended token as the concrete secret
-you can read today. `infra`'s own workflows and `scripts/with-infra-secrets.sh`
-are the reference implementations — mirror them.
+`infra`'s own workflows and scripts are the reference implementations —
+mirror them rather than reinventing.
 
-### CI — `bitwarden/sm-action`
+### CI — OIDC, never a stored credential
 
-Store the Local machine-account token as a native Actions secret
-(`BWS_ACCESS_TOKEN`) and the vended secret's UUID as a non-secret variable
-(`BWS_VENDED_SECRET_ID` — a UUID identifies a secret, it grants nothing on its
-own, so it's a variable not a secret). Pin the action by SHA, keep the fetched
-value a step output (`set_env: false`), and let `sm-action` mask it:
+A repo's own CI should not consume the vended token at all — it has the
+ephemeral `github.token` and can mint what it needs. If a workflow in this
+account genuinely needs an SSM value, the pattern is `infra`'s: a dedicated
+IAM role trusting that repo's exact OIDC sub, `id-token: write` job-scoped,
+`aws-actions/configure-aws-credentials`, then the fetch (see
+`infra`'s `.github/actions/read-ssm-params` and `vend-token.yml`'s inline
+single-parameter read). Never store an AWS access key as a GitHub secret
+(#143 tracks enforcing this).
 
-```yaml
-- name: Read vended token from Bitwarden
-  id: bw
-  uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793 # v3.0.1
-  with:
-    access_token: ${{ secrets.BWS_ACCESS_TOKEN }}
-    set_env: false
-    secrets: |
-      ${{ vars.BWS_VENDED_SECRET_ID }} > VENDED
+### Local / agent shell — `aws-vended-token`
 
-# steps.bw.outputs.VENDED is the {token, expires_at} JSON — parse .token
-```
-
-In practice a repo's own CI rarely needs the vended token — it already has the
-ephemeral `github.token` and can mint its own. The recipe matters when you've
-been granted read on a secret of your own; the shape is identical, only the
-`access_token` and secret UUID change. See `tofu-plan.yml`'s `sm-action` step
-for the same pattern reading the `infra` Project.
-
-### Local / agent shell — `bws`
-
-Routine cross-repo work reads the vended token with the `bws` CLI, using the
-Local machine-account token, and parses the `.token` field out of the
-`{token, expires_at}` JSON. `dotfiles`#377/#388 is the live implementation of
-this — generalize from it rather than reinventing the parsing.
+Routine cross-repo work reads the vended token via `dotfiles`'
+`aws-vended-token` (`dotfiles`' `scripts/aws-vended-token.sh`, on PATH from
+its deploy): fetches `/runtime/vended-token` as `infra-local-read`, checks
+`expires_at` in jq, prints the token or fails loud — generalize from it
+rather than reinventing the parsing. Each repo's `.envrc` runs it at shell
+entry and exports `GH_VENDED_TOKEN` (`dotfiles`#377).
 
 **If a local secret is elevated, gate it in the Keychain.** Never export an
 elevated credential ambiently into `.envrc.local` — direnv fires for
 non-interactive agent shells too (`dotfiles`#160), so an ambient export is
-reachable from every agent process. `infra`'s own elevated local path is the
-model: the machine-account token lives in the macOS login Keychain added
-**without** an app ACL (no `-A`), so each read raises a prompt — an interactive
-human clicks Allow, a silent agent attempt fails closed and becomes a visible
-tripwire. See `scripts/with-infra-secrets.sh`, `.envrc.local.example`'s setup
-block, and ADR-0009 for the why. The vended token is _not_ elevated — it's the
-routine path and can stay ambient — but anything with a write grant or a
-crown-jewel scope must be gated.
+reachable from every agent process. `infra`'s elevated local path is the
+model: the `infra-aws-local-apply` key lives in the macOS login Keychain
+added **without** an app ACL (no `-A`), so each read raises a prompt — an
+interactive human clicks Allow, a silent agent attempt fails closed and
+becomes a visible tripwire. See `scripts/with-infra-secrets.sh`,
+`.envrc.local.example`'s setup block, and ADR-0010's #126 amendment for the
+why. The vended token is _not_ elevated — it's the routine path and can
+stay silent-read — but anything with a write grant or a crown-jewel scope
+must be gated.
 
 ## Storing a genuinely new secret
 
-Not supported self-service today, and that's a deliberate consequence of the
-three-account cap, not an oversight. A new secret readable by a different repo
-needs a Machine Account with a grant on the Project it lives in — but every
-account is spoken for, and widening an existing grant to a new consumer erodes
-the CI-vs-local boundary the design rests on (ADR-0008).
+Self-service in a way Bitwarden never was (ADR-0010): a new secret is a new
+SSM parameter under the tier that fits its trust level, plus an IAM grant
+for exactly its consumers.
 
-So before storing anything new: **reuse the vended token if the need is GitHub
-API work**, or **open an ADR-0008-consequences discussion** (an issue against
-`infra`) if it genuinely isn't — the fix is a design decision about the
-account budget (e.g. merging the two CI-side accounts to free one, per
-ADR-0008's own Consequences), recorded as it's made.
+- **Reuse the vended token if the need is GitHub API work** — that's what
+  it's for.
+- Otherwise: open an issue against `infra` proposing the parameter path and
+  the consumer identity, then a PR — parameter metadata in `ssm.tf` (or a
+  new `/runtime/<app>/*` path per ADR-0010's reserved convention), the
+  role/user grant in `iam/`. The `iam/` change is applied by hand via
+  `just tofu-iam` (bootstrap key, reactivated for the run) — never by CI,
+  so no CI role can grant itself anything. Values are hand-populated
+  (`docs/BOOTSTRAP.md`'s population pattern), never in config or state.
 
 ## Who to ask for a grant
 
-The account holder, by hand. The Machine-Account-to-Project grants are the
-actual security boundary and the Terraform provider has no resource for them
-(ADR-0008) — so adding or changing a grant is a manual step in Bitwarden's web
-UI, never a PR against `infra` and never self-service. File an issue against
-`infra` describing what the consuming repo needs and why; the grant is made
-manually and the live state is audited against `AGENTS.md`'s grant table
-afterward, since nothing else enforces it.
+The account holder — but unlike the Bitwarden grants, it's a reviewable PR
+against `iam/`, not an invisible web-UI toggle: the role×path matrix is
+code, and the periodic audit checks the live account against it (ADR-0010,
+as amended by #126).
