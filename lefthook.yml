@@ -49,6 +49,14 @@ pre-commit:
         - "scripts/*.sh"
       run: scripts/check-comment-concision.sh {staged_files}
 
+    - name: workflow-secrets
+      tags: [base]
+      glob:
+        - ".github/workflows/*.yml"
+        - ".github/workflows/*.yaml"
+      # No stored Secret beyond GITHUB_TOKEN (ADR-0011).
+      run: scripts/check-workflow-secrets.sh {staged_files}
+
     - name: gitleaks
       tags: [base]
       # No glob, no {staged_files}: gitleaks is content-based, not
