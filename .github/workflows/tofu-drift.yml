@@ -69,7 +69,7 @@ jobs:
             /infra/r2-plan-storage-token
             /infra/r2-account-id
             /infra/gh-app-private-key
-            /infra/cloudflare-api-token
+            /infra/cloudflare-api-token-ro
 
       # Same read-only App token as tofu-plan.yml (#59) — no write scope,
       # this never mutates repo state.
@@ -95,7 +95,9 @@ jobs:
           R2_PLAN_ACCESS_KEY_ID: ${{ steps.ssm.outputs.R2_PLAN_ACCESS_KEY_ID }}
           R2_PLAN_STORAGE_TOKEN: ${{ steps.ssm.outputs.R2_PLAN_STORAGE_TOKEN }}
           R2_ACCOUNT_ID: ${{ steps.ssm.outputs.R2_ACCOUNT_ID }}
-          CLOUDFLARE_API_TOKEN: ${{ steps.ssm.outputs.CLOUDFLARE_API_TOKEN }}
+          # The read-only Cloudflare token (#144) — a refresh never writes;
+          # the edit token stays confined to apply/dispatch.
+          CLOUDFLARE_API_TOKEN: ${{ steps.ssm.outputs.CLOUDFLARE_API_TOKEN_RO }}
         run: |
           r2_secret_key="$(printf '%s' "$R2_PLAN_STORAGE_TOKEN" | shasum -a 256 | cut -d' ' -f1)"
           export AWS_ENDPOINT_URL_S3="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
