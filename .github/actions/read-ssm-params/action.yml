@@ -1,0 +1,83 @@
+name: Read SSM parameters
+description: >
+  Reads /infra/* SecureString parameters through the job's OIDC-assumed
+  role (ADR-0010, #122) — the SSM replacement for the retired
+  bitwarden/sm-action fetch, with the same shape: values land as masked
+  step outputs, never job-wide env. Requires aws-actions/configure-aws-credentials
+  to have run first in the same job. Fails loudly if a name doesn't
+  resolve or still holds ssm.tf's PLACEHOLDER (docs/BOOTSTRAP.md §10's
+  population step) — a placeholder silently read as e.g. the state
+  passphrase would otherwise surface as an unrelated decryption error.
+
+inputs:
+  names:
+    description: >
+      Whitespace-separated /infra/* parameter names. Each becomes the
+      output named by its upper-snake leaf (/infra/tf-state-passphrase →
+      TF_STATE_PASSPHRASE). One GetParameters call, so max 10 names.
+    required: true
+
+# Composite actions can't declare outputs dynamically, so every /infra/*
+# parameter is declared here; only the requested ones are non-empty.
+outputs:
+  GH_APP_PRIVATE_KEY:
+    description: /infra/gh-app-private-key
+    value: ${{ steps.fetch.outputs.GH_APP_PRIVATE_KEY }}
+  CLOUDFLARE_API_TOKEN:
+    description: /infra/cloudflare-api-token
+    value: ${{ steps.fetch.outputs.CLOUDFLARE_API_TOKEN }}
+  TF_STATE_PASSPHRASE:
+    description: /infra/tf-state-passphrase
+    value: ${{ steps.fetch.outputs.TF_STATE_PASSPHRASE }}
+  R2_ACCOUNT_ID:
+    description: /infra/r2-account-id
+    value: ${{ steps.fetch.outputs.R2_ACCOUNT_ID }}
+  R2_PLAN_ACCESS_KEY_ID:
+    description: /infra/r2-plan-access-key-id
+    value: ${{ steps.fetch.outputs.R2_PLAN_ACCESS_KEY_ID }}
+  R2_PLAN_STORAGE_TOKEN:
+    description: /infra/r2-plan-storage-token
+    value: ${{ steps.fetch.outputs.R2_PLAN_STORAGE_TOKEN }}
+  R2_APPLY_ACCESS_KEY_ID:
+    description: /infra/r2-apply-access-key-id
+    value: ${{ steps.fetch.outputs.R2_APPLY_ACCESS_KEY_ID }}
+  R2_APPLY_STORAGE_TOKEN:
+    description: /infra/r2-apply-storage-token
+    value: ${{ steps.fetch.outputs.R2_APPLY_STORAGE_TOKEN }}
+
+runs:
+  using: composite
+  steps:
+    - name: Fetch and mask
+      id: fetch
+      shell: bash
+      env:
+        NAMES: ${{ inputs.names }}
+      run: |
+        read -r -a names <<<"$(tr -s '[:space:]' ' ' <<<"$NAMES")"
+        json="$(aws ssm get-parameters --with-decryption --output json \
+          --names "${names[@]}")"
+
+        invalid="$(jq -r '.InvalidParameters[]?' <<<"$json")"
+        if [[ -n "$invalid" ]]; then
+          echo "::error::SSM parameters not found: ${invalid//$'\n'/ }"
+          exit 1
+        fi
+
+        for name in "${names[@]}"; do
+          value="$(jq -er --arg n "$name" \
+            '.Parameters[] | select(.Name == $n) | .Value' <<<"$json")"
+          if [[ "$value" == "PLACEHOLDER" ]]; then
+            echo "::error::${name} still holds ssm.tf's placeholder — run docs/BOOTSTRAP.md §10's population step before anything consumes it"
+            exit 1
+          fi
+          # Mask before the value is written anywhere. Multiline values
+          # (the App key .pem) must be masked line by line — a single
+          # add-mask of the whole blob doesn't match log output.
+          while IFS= read -r line; do
+            [[ -n "$line" ]] && echo "::add-mask::$line"
+          done <<<"$value"
+          out="$(basename "$name" | tr 'a-z-' 'A-Z_')"
+          delim="EOF_$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"
+          { echo "${out}<<${delim}"; printf '%s\n' "$value"; echo "$delim"; } >>"$GITHUB_OUTPUT"
+        done

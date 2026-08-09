@@ -48,6 +48,9 @@ verbatim.
   App-installation tokens for CI (#32), used by `tofu-plan.yml`,
   `tofu-apply.yml`, `tofu-apply-dispatch.yml`, `tofu-drift.yml`, and
   `vend-token.yml` (a separate, narrower repo list — see Credentials).
+- `.github/actions/read-ssm-params/` — composite action reading `/infra/*`
+  SSM parameters through the job's OIDC-assumed role (#122, ADR-0010),
+  used by the four tofu workflows in place of `bitwarden/sm-action`.
 - `.github/workflows/` — `tofu-plan.yml`/`tofu-apply.yml` are the
   saved-plan-on-merge pipeline (ADR-0003); `vend-token.yml` publishes a
   scoped, rotating token into Bitwarden's `vended-tokens` Project for
@@ -239,17 +242,17 @@ it once via `workflow_dispatch`) to resume.
 
 ### CI secrets and variables
 
-> Realizes #59/ADR-0009 on top of ADR-0003's saved-plan model: after the
-> migration CI holds almost nothing native — it authenticates to Bitwarden and
-> fetches the rest at runtime via `bitwarden/sm-action`.
+> Realizes #59/ADR-0009 (and #122/ADR-0010) on top of ADR-0003's saved-plan
+> model: CI holds almost nothing native — each tofu workflow assumes its OIDC
+> role and fetches the rest from SSM at runtime (`read-ssm-params`).
 
 The **complete native GitHub-secret footprint** across all workflows:
 
-| Native secret              | Used by             | Purpose                                                                                                                                                                                                              |
-| -------------------------- | ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `BWS_ACCESS_TOKEN`         | plan/apply/dispatch | The `infra` CI machine account — configures the `bitwarden-secrets` provider (`BW_ACCESS_TOKEN`) and is `access_token` for every `sm-action` fetch. The one root that can't live in the store it unlocks (ADR-0008). |
-| `BWS_ORGANIZATION_ID`      | plan/apply/dispatch | Bitwarden Org UUID (`BW_ORGANIZATION_ID`) — Sensitive, so a secret.                                                                                                                                                  |
-| `BWS_VENDING_ACCESS_TOKEN` | vend                | The distinct Vending machine account (read `infra`, read/write `vended-tokens`) — never the CI account, so the vended path can't reach CI's write grant on `infra`.                                                  |
+| Native secret              | Used by             | Purpose                                                                                                                                                                                                                           |
+| -------------------------- | ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `BWS_ACCESS_TOKEN`         | plan/apply/dispatch | The `infra` CI machine account. Configures the `bitwarden-secrets` provider (`BW_ACCESS_TOKEN`), which a plan still refreshes for the two managed secrets. Leaves with the provider at #126; no `sm-action` fetch remains (#122). |
+| `BWS_ORGANIZATION_ID`      | plan/apply/dispatch | Bitwarden Org UUID (`BW_ORGANIZATION_ID`) — Sensitive, so a secret.                                                                                                                                                               |
+| `BWS_VENDING_ACCESS_TOKEN` | vend                | The distinct Vending machine account (read `infra`, read/write `vended-tokens`) — never the CI account, so the vended path can't reach CI's write grant on `infra`.                                                               |
 
 `BWS_ACCESS_TOKEN` and `BWS_ORGANIZATION_ID` are **mirrored into the repo's
 Dependabot secrets store**, not just Actions (#89): a `pull_request` run
@@ -260,23 +263,27 @@ only `secrets.*` swap stores, and only plan is exposed (apply/dispatch never
 trigger off a Dependabot-actored event). Same non-tofu-managed shape as the
 Actions copy — see below.
 
-Everything else is **fetched from the `infra` Project at runtime**, keyed by a
-non-secret **variable** holding its Bitwarden UUID:
+Everything else is **fetched from SSM at runtime** (#122, ADR-0010) via the
+job's OIDC-assumed role — no per-secret UUID variable needed, the `/infra/*`
+parameter names are literal in each workflow's `read-ssm-params` step:
 
-- Fetched by `sm-action`: `TF_STATE_PASSPHRASE`, `R2_ACCOUNT_ID`, the R2 pair
-  (plan reads `R2_PLAN_*` — a separate **Object Read only** token; apply and
-  dispatch read the read/write `R2_APPLY_*`), `GH_APP_PRIVATE_KEY`, and
-  `CLOUDFLARE_API_TOKEN` (#9, the same token `dns.tf`'s provider reads
-  locally). Apply and dispatch mint an elevated App token from the key; the
-  plan job mints an `administration:read`+`issues:read` token for the
-  provider (the routine PAT is retired, #59) and posts its PR comment via
-  the ephemeral `github.token`.
-- UUID **variables** (not secret): `BWS_INFRA_PROJECT_ID`,
-  `BWS_APP_KEY_SECRET_ID`, `BWS_PASSPHRASE_SECRET_ID`, `BWS_R2_ACCOUNT_SECRET_ID`,
-  `BWS_R2_{PLAN,APPLY}_{KEY,TOKEN}_SECRET_ID`, `BWS_VENDED_SECRET_ID`,
-  `BWS_CLOUDFLARE_TOKEN_SECRET_ID`, and `GH_APP_CLIENT_ID`. Plus the AWS
-  role ARNs (ADR-0010, also not secret — the trust policy's sub conditions
-  are the gate): `AWS_PLAN_ROLE_ARN`, `AWS_APPLY_ROLE_ARN`.
+- Fetched from SSM: `TF_STATE_PASSPHRASE`, `R2_ACCOUNT_ID`, the R2 pair
+  (plan/drift read `R2_PLAN_*` — a separate **Object Read only** token;
+  apply and dispatch read the read/write `R2_APPLY_*`),
+  `GH_APP_PRIVATE_KEY`, and `CLOUDFLARE_API_TOKEN` (#9, the same token
+  `dns.tf`'s provider reads locally). Apply and dispatch mint an elevated
+  App token from the key; the plan job mints an
+  `administration:read`+`issues:read` token for the provider (the routine
+  PAT is retired, #59) and posts its PR comment via the ephemeral
+  `github.token`.
+- **Variables** (not secret): `BWS_INFRA_PROJECT_ID` (the provider's
+  Project id), `BWS_APP_KEY_SECRET_ID` and `BWS_VENDED_SECRET_ID` (still
+  read by `vend-token.yml`'s `sm-action` fetch until #124), and
+  `GH_APP_CLIENT_ID`. Plus the AWS role ARNs (ADR-0010, also not secret —
+  the trust policy's sub conditions are the gate): `AWS_PLAN_ROLE_ARN`,
+  `AWS_APPLY_ROLE_ARN`. The other `BWS_*_SECRET_ID` UUID variables
+  (passphrase, R2, Cloudflare) are unreferenced since #122 — delete them
+  with the BWS teardown at #126.
 - `CLOUDFLARE_ACCOUNT_ID` (#9): also a plain **variable**, not fetched from
   Bitwarden — it's account-identifying, not secret, same reasoning as
   `variables.tf`'s `cloudflare_account_id`. Fed straight to

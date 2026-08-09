@@ -16,10 +16,11 @@ inputs:
     required: true
   private-key:
     description: >
-      The App's private key — now read from Bitwarden's `infra` Project via
-      bitwarden/sm-action (app.tf, ADR-0008), no longer a native secret.
-      Same pass-through requirement as client-id: the caller reads it and
-      passes it in explicitly.
+      The App's private key — read from SSM (/infra/gh-app-private-key) via
+      read-ssm-params in the tofu workflows (#122, ADR-0010); vend-token.yml
+      still reads it from Bitwarden until #124. Same pass-through
+      requirement as client-id: the caller reads it and passes it in
+      explicitly.
     required: true
   repositories:
     description: Comma or newline-separated repos the token can access.

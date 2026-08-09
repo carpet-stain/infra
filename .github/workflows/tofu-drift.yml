@@ -50,22 +50,30 @@ jobs:
           curl -fsSL "https://github.com/tofuutils/tenv/releases/download/v${TENV_VERSION}/tenv_v${TENV_VERSION}_Linux_x86_64.tar.gz" \
             | sudo tar -xz -C /usr/local/bin tenv tofu
 
-      # Same read-only Bitwarden fetch as tofu-plan.yml (#59, ADR-0008) —
+      # Same OIDC-assumed infra-plan-read role as tofu-plan.yml (ADR-0010)
+      # — a schedule run presents the branch-ref sub, the trust policy's
+      # second allowed value. AWS_* env carries these creds, which also
+      # power the SSM fetch below; R2's move to -backend-config.
+      - name: Assume infra-plan-read via OIDC
+        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
+        with:
+          role-to-assume: ${{ vars.AWS_PLAN_ROLE_ARN }}
+          aws-region: us-east-1
+
+      # Same read-only SSM fetch as tofu-plan.yml (#122, ADR-0010) —
       # state-backend credentials and the App private key, nothing apply
       # needs.
-      - name: Read secrets from Bitwarden
-        id: bw-backend
-        uses: bitwarden/sm-action@1238aae8fc64b212641190a9227c8a734ab1a793 # v3.0.1
+      - name: Read secrets from SSM
+        id: ssm
+        uses: ./.github/actions/read-ssm-params
         with:
-          access_token: ${{ secrets.BWS_ACCESS_TOKEN }}
-          set_env: false
-          secrets: |
-            ${{ vars.BWS_PASSPHRASE_SECRET_ID }} > TF_STATE_PASSPHRASE
-            ${{ vars.BWS_R2_PLAN_KEY_SECRET_ID }} > R2_PLAN_ACCESS_KEY_ID
-            ${{ vars.BWS_R2_PLAN_TOKEN_SECRET_ID }} > R2_PLAN_STORAGE_TOKEN
-            ${{ vars.BWS_R2_ACCOUNT_SECRET_ID }} > R2_ACCOUNT_ID
-            ${{ vars.BWS_APP_KEY_SECRET_ID }} > GH_APP_PRIVATE_KEY
-            ${{ vars.BWS_CLOUDFLARE_TOKEN_SECRET_ID }} > CLOUDFLARE_API_TOKEN
+          names: >-
+            /infra/tf-state-passphrase
+            /infra/r2-plan-access-key-id
+            /infra/r2-plan-storage-token
+            /infra/r2-account-id
+            /infra/gh-app-private-key
+            /infra/cloudflare-api-token
 
       # Same read-only App token as tofu-plan.yml (#59) — no write scope,
       # this never mutates repo state.
@@ -74,20 +82,10 @@ jobs:
         uses: ./.github/actions/mint-app-token
         with:
           client-id: ${{ vars.GH_APP_CLIENT_ID }}
-          private-key: ${{ steps.bw-backend.outputs.GH_APP_PRIVATE_KEY }}
+          private-key: ${{ steps.ssm.outputs.GH_APP_PRIVATE_KEY }}
           repositories: dotfiles,infra,project-starter-template,golden-ratio-dual-gate,deal-finder,template-e2e
           permission-administration: read
           permission-issues: read
-
-      # Same OIDC-assumed infra-plan-read role as tofu-plan.yml (ADR-0010)
-      # — a schedule run presents the branch-ref sub, the trust policy's
-      # second allowed value. AWS_* env carries these creds; R2's move to
-      # -backend-config below.
-      - name: Assume infra-plan-read via OIDC
-        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
-        with:
-          role-to-assume: ${{ vars.AWS_PLAN_ROLE_ARN }}
-          aws-region: us-east-1
 
       # Mirrors tofu-plan.yml's tofu init + plan exactly, minus the
       # artifact/tree-hash bookkeeping — this plan is never consumed by an
@@ -97,11 +95,11 @@ jobs:
         env:
           TENV_AUTO_INSTALL: "true"
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
-          TF_STATE_PASSPHRASE: ${{ steps.bw-backend.outputs.TF_STATE_PASSPHRASE }}
-          R2_PLAN_ACCESS_KEY_ID: ${{ steps.bw-backend.outputs.R2_PLAN_ACCESS_KEY_ID }}
-          R2_PLAN_STORAGE_TOKEN: ${{ steps.bw-backend.outputs.R2_PLAN_STORAGE_TOKEN }}
-          R2_ACCOUNT_ID: ${{ steps.bw-backend.outputs.R2_ACCOUNT_ID }}
-          CLOUDFLARE_API_TOKEN: ${{ steps.bw-backend.outputs.CLOUDFLARE_API_TOKEN }}
+          TF_STATE_PASSPHRASE: ${{ steps.ssm.outputs.TF_STATE_PASSPHRASE }}
+          R2_PLAN_ACCESS_KEY_ID: ${{ steps.ssm.outputs.R2_PLAN_ACCESS_KEY_ID }}
+          R2_PLAN_STORAGE_TOKEN: ${{ steps.ssm.outputs.R2_PLAN_STORAGE_TOKEN }}
+          R2_ACCOUNT_ID: ${{ steps.ssm.outputs.R2_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ steps.ssm.outputs.CLOUDFLARE_API_TOKEN }}
         run: |
           r2_secret_key="$(printf '%s' "$R2_PLAN_STORAGE_TOKEN" | shasum -a 256 | cut -d' ' -f1)"
           export AWS_ENDPOINT_URL_S3="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
