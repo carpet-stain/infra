@@ -193,6 +193,95 @@ the run log. Local shells (`dotfiles`#377) read from there. From here on,
 AGENTS.md's Branch & PR model and Credentials sections are the operating
 manual, not this doc.
 
+## 9. Bootstrap the AWS account
+
+First step of the ADR-0010 migration (#119): machine secrets move to AWS
+SSM Parameter Store + IAM, and this ceremony has to exist before any tofu
+can touch AWS. Everything here runs as the **root user in the console** —
+the bootstrap IAM user created at the end is the account's first non-root
+credential. (While the migration runs, Bitwarden from step 6 stays
+live; at decommission, #126 rewrites that section away.)
+
+- **Create the account**; root email and password go in the
+  password-manager vault — human credentials, outside ADR-0010's
+  machine-store scope. Enroll **hardware MFA** on root (IAM dashboard →
+  root user → Security credentials → Assign MFA device). Never create a
+  root access key — the bootstrap user below is the CLI credential.
+- **Billing alarm**: Billing and Cost Management → Budgets → Create
+  budget → the **Zero spend budget** template (alerts past $0.01),
+  notifying the account email. This account should run at ~$0 — SSM
+  Standard and IAM are free at this scale — so any spend is a signal,
+  not a threshold to tune.
+- **Region: `us-east-1`.** SSM parameters are regional, so the pick is
+  recorded here once, not re-derived (ADR-0010): the nearest existing
+  tooling is GitHub-hosted runners (US-based), and nothing else in this
+  account has a location. #121 pins it as the `aws` provider's `region`
+  in `versions.tf`.
+- **Bootstrap IAM user**: IAM → Users → Create user `infra-bootstrap`,
+  **no console access**, no group. Attach the inline policy below (name
+  it `infra-bootstrap`), then create one access key (use case: CLI).
+  Not `AdministratorAccess`: it can create the OIDC provider, the five
+  roles, the two tier keys, and the SSM parameters (#121's two applies),
+  but can't touch billing, root, users, or its own permissions.
+
+  ```json
+  {
+    "Version": "2012-10-17",
+    "Statement": [
+      {
+        "Sid": "IamBootstrap",
+        "Effect": "Allow",
+        "Action": [
+          "iam:CreateOpenIDConnectProvider",
+          "iam:GetOpenIDConnectProvider",
+          "iam:CreateRole",
+          "iam:GetRole",
+          "iam:PutRolePolicy",
+          "iam:GetRolePolicy",
+          "iam:ListRolePolicies",
+          "iam:ListAttachedRolePolicies"
+        ],
+        "Resource": "*"
+      },
+      {
+        "Sid": "KmsBootstrap",
+        "Effect": "Allow",
+        "Action": "kms:*",
+        "Resource": "*"
+      },
+      {
+        "Sid": "SsmBootstrap",
+        "Effect": "Allow",
+        "Action": "ssm:*",
+        "Resource": "*"
+      }
+    ]
+  }
+  ```
+
+  The `iam:Get*`/`iam:List*` entries extend ADR-0010's write-action list:
+  tofu reads back everything it creates on the next refresh, so the
+  writes alone can't converge a plan. `kms:*` is on `Resource: "*"`
+  because `kms:CreateKey` can't be scoped to a key ARN that doesn't
+  exist yet — the two tier keys are the only keys this account will ever
+  hold, so `*` covers exactly them; tighten to the two ARNs after #121
+  creates them if wanted.
+
+- **Store the access key in the login Keychain, gated** — same pattern
+  as `infra-bws` in step 6, one item holding both halves:
+
+  ```sh
+  security add-generic-password -s infra-aws-bootstrap -a <ACCESS_KEY_ID> -w
+  ```
+
+  Paste the secret access key at the prompt; omitting `-A` is deliberate,
+  so each read prompts. The key id is the item's account attribute
+  (`security find-generic-password -s infra-aws-bootstrap | grep acct`);
+  the secret comes back with `-w`. Local-only, never a GitHub secret.
+  Once #122 confirms OIDC works for every CI path, **deactivate (don't
+  delete)** the key — it stays as local break-glass, a standing audit
+  item (ADR-0010's step 7).
+
 ## What's still manual, permanently
 
 Not a bootstrap-only list — these stay manual forever, for reasons
@@ -211,6 +300,10 @@ tooling gaps:
   Accounts, and their Project grants (the provider only manages `secret`).
   The grants are the security boundary; audit the live state against
   AGENTS.md's grant table, since nothing enforces it.
+- The AWS account scaffolding (ADR-0010) — account creation, root MFA,
+  the zero-spend budget, and the bootstrap IAM user. After #122 demotes
+  its key, "still deactivated, still needed" joins the periodic audit
+  alongside the containment invariant.
 
 See AGENTS.md's Credentials section for the day-to-day version of this
 list, and ADR-0004/ADR-0005 for the full reasoning behind the model.
