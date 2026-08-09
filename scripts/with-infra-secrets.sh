@@ -29,7 +29,9 @@ export BWS_ACCESS_TOKEN="$bws_token"
 
 # One list call, then pick by key — no per-secret UUID to track locally.
 # jq -e exits non-zero on a missing/null value, so set -e fails closed here.
-secrets="$(bws secret list "$TF_VAR_bws_infra_project_id" --output json)"
+# --color no: bws ≥2.x syntax-highlights JSON even into a pipe, which jq
+# rejects as garbage — force it off rather than trust TTY detection.
+secrets="$(bws secret list "$TF_VAR_bws_infra_project_id" --output json --color no)"
 val() { jq -er --arg k "$1" 'first(.[] | select(.key == $k) | .value)' <<<"$secrets"; }
 
 passphrase="$(val TF_STATE_PASSPHRASE)"
@@ -45,6 +47,21 @@ for name in passphrase r2_key r2_token r2_account; do
     exit 1
   }
 done
+
+# The AWS bootstrap/break-glass key (ADR-0010, docs/BOOTSTRAP.md §9) — the
+# second gated Keychain item: access key id rides the account attribute,
+# the secret is the password (only the -w read prompts). Fed to the aws
+# provider as explicit TF_VARs, never AWS_* env: those names carry the R2
+# backend credentials below, and explicit provider config is the one slot
+# that outranks the env chain.
+aws_bootstrap_key_id="$(security find-generic-password -s infra-aws-bootstrap | awk -F'"' '$2 == "acct" {print $4}')"
+aws_bootstrap_secret="$(security find-generic-password -s infra-aws-bootstrap -w)"
+[[ -n "$aws_bootstrap_key_id" && -n "$aws_bootstrap_secret" ]] || {
+  echo "with-infra-secrets: Keychain item 'infra-aws-bootstrap' missing or incomplete — see docs/BOOTSTRAP.md §9" >&2
+  exit 1
+}
+export TF_VAR_aws_access_key_id="$aws_bootstrap_key_id"
+export TF_VAR_aws_secret_access_key="$aws_bootstrap_secret"
 
 # Derive the R2 S3 pair, endpoint, and enforced encryption exactly as .envrc
 # did before these moved out of it (ADR-0002): the S3 secret is sha256 of the

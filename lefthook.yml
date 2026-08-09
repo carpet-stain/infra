@@ -45,6 +45,7 @@ pre-commit:
       tags: [base]
       glob:
         - "*.tf"
+        - "**/*.tf"
         - "scripts/*.sh"
       run: scripts/check-comment-concision.sh {staged_files}
 
@@ -107,19 +108,28 @@ pre-commit:
       tags: [base]
       run: scripts/check-envrc-local-example.sh
 
+    # The tofu format/lint jobs run explicitly in root and iam/ (never a
+    # -recursive walk, which would descend into .claude/worktrees copies).
+    # Globs carry "**/*.tf" so an iam/-only change still triggers them.
     - name: tofu-format
       tags: [lang]
-      glob: "*.tf"
-      run: tofu fmt -check
+      glob:
+        - "*.tf"
+        - "**/*.tf"
+      run: tofu fmt -check && tofu fmt -check iam
 
     - name: tofu-lint
       tags: [lang]
-      glob: "*.tf"
-      run: tflint
+      glob:
+        - "*.tf"
+        - "**/*.tf"
+      run: tflint && tflint --chdir=iam
 
     - name: tofu-scan
       tags: [lang]
-      glob: "*.tf"
+      glob:
+        - "*.tf"
+        - "**/*.tf"
       run: trivy config --exit-code 1 --quiet .
 
 pre-push:

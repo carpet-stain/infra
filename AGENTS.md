@@ -35,6 +35,15 @@ verbatim.
   secret (ADR-0008), value set in Bitwarden's UI, no consumer wired yet.
 - `variables.tf` — apply-time inputs fed via `TF_VAR_*`, never a literal in
   a committed file (currently the `infra` Bitwarden Project UUID).
+- `ssm.tf` — the `/infra/*` SSM parameters (ADR-0010, #121): existence and
+  metadata only, values hand-populated and `ignore_changes`-ignored. No
+  `/runtime/*` parameters by design — the vend workflow creates its own.
+- `iam/` — the bootstrap-only root module (ADR-0010): OIDC provider, the
+  per-consumer IAM roles, the two tier KMS keys. Own state (second key in
+  the same R2 bucket), applied only via `just tofu-iam` with the bootstrap
+  key — never by CI, so no CI role ever holds `iam:*`/`kms:Put*`. The one
+  legitimate directory (see #121's layout comment); AWS resources otherwise
+  land as root-level files.
 - `.github/actions/mint-app-token/` — composite action minting scoped
   App-installation tokens for CI (#32), used by `tofu-plan.yml`,
   `tofu-apply.yml`, `tofu-apply-dispatch.yml`, `tofu-drift.yml`, and
@@ -157,6 +166,15 @@ defeats the lock's purpose.
   (`BW_ORGANIZATION_ID`, `TF_VAR_bws_infra_project_id`); the `infra`
   machine-account token lives in the login Keychain (item `infra-bws`), added
   without an app ACL so each read prompts. See `.envrc.local.example`.
+- AWS (ADR-0010): local `tofu` runs feed the aws provider the
+  bootstrap/break-glass key from the `infra-aws-bootstrap` Keychain item
+  (second gated prompt, docs/BOOTSTRAP.md §9) as explicit `TF_VAR`s — the
+  `AWS_*` env names locally carry the R2 backend credentials. CI holds no
+  AWS secret at all: each workflow assumes its OIDC role
+  (`vars.AWS_PLAN_ROLE_ARN` / `vars.AWS_APPLY_ROLE_ARN`) per job, creds
+  ride the env chain (never Tofu variables — a saved-plan apply would
+  replay them stale), and the R2 backend creds ride `-backend-config`
+  flags instead of env there.
 - Elevate explicitly only for the one action that needs admin:
   `env -u GH_TOKEN -u GITHUB_TOKEN gh ...` — both vars, since `.envrc` aliases
   `GITHUB_TOKEN` to the same scoped token, so dropping `GH_TOKEN` alone is a no-op.
@@ -256,7 +274,9 @@ non-secret **variable** holding its Bitwarden UUID:
 - UUID **variables** (not secret): `BWS_INFRA_PROJECT_ID`,
   `BWS_APP_KEY_SECRET_ID`, `BWS_PASSPHRASE_SECRET_ID`, `BWS_R2_ACCOUNT_SECRET_ID`,
   `BWS_R2_{PLAN,APPLY}_{KEY,TOKEN}_SECRET_ID`, `BWS_VENDED_SECRET_ID`,
-  `BWS_CLOUDFLARE_TOKEN_SECRET_ID`, and `GH_APP_CLIENT_ID`.
+  `BWS_CLOUDFLARE_TOKEN_SECRET_ID`, and `GH_APP_CLIENT_ID`. Plus the AWS
+  role ARNs (ADR-0010, also not secret — the trust policy's sub conditions
+  are the gate): `AWS_PLAN_ROLE_ARN`, `AWS_APPLY_ROLE_ARN`.
 - `CLOUDFLARE_ACCOUNT_ID` (#9): also a plain **variable**, not fetched from
   Bitwarden — it's account-identifying, not secret, same reasoning as
   `variables.tf`'s `cloudflare_account_id`. Fed straight to

@@ -7,9 +7,6 @@ name: Tofu apply (manual)
 on:
   workflow_dispatch:
 
-permissions:
-  contents: read
-
 # Same group name as tofu-apply.yml's merge-triggered apply — a manual
 # dispatch queues behind a concurrent merge-apply rather than racing it.
 concurrency:
@@ -20,6 +17,12 @@ jobs:
   apply:
     name: tofu apply (fresh plan)
     runs-on: ubuntu-latest
+    # Job-scoped per ADR-0010's step 5 — a workflow_dispatch run on main
+    # presents the same branch-ref sub as a merge apply, so it assumes the
+    # same infra-apply role.
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v7
 
@@ -65,6 +68,14 @@ jobs:
           permission-administration: write
           permission-issues: write
 
+      # Same OIDC-assumed infra-apply role as tofu-apply.yml (ADR-0010) —
+      # AWS_* env carries these creds; R2's move to -backend-config below.
+      - name: Assume infra-apply via OIDC
+        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
+        with:
+          role-to-assume: ${{ vars.AWS_APPLY_ROLE_ARN }}
+          aws-region: us-east-1
+
       # Same TF_ENCRYPTION/backend setup as tofu-apply.yml's merge-triggered
       # job (mirrors .envrc, plain bash string concatenation, never GitHub
       # Actions `${{ }}` interpolation inside a run: script) — the one
@@ -76,8 +87,8 @@ jobs:
           TENV_AUTO_INSTALL: "true"
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
           TF_STATE_PASSPHRASE: ${{ steps.bw.outputs.TF_STATE_PASSPHRASE }}
+          R2_APPLY_ACCESS_KEY_ID: ${{ steps.bw.outputs.R2_APPLY_ACCESS_KEY_ID }}
           R2_APPLY_STORAGE_TOKEN: ${{ steps.bw.outputs.R2_APPLY_STORAGE_TOKEN }}
-          AWS_ACCESS_KEY_ID: ${{ steps.bw.outputs.R2_APPLY_ACCESS_KEY_ID }}
           R2_ACCOUNT_ID: ${{ steps.bw.outputs.R2_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ steps.bw.outputs.CLOUDFLARE_API_TOKEN }}
           # The fresh plan refreshes the bitwarden-secrets resources
@@ -87,8 +98,7 @@ jobs:
           TF_VAR_bws_infra_project_id: ${{ vars.BWS_INFRA_PROJECT_ID }}
           TF_VAR_cloudflare_account_id: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
         run: |
-          AWS_SECRET_ACCESS_KEY="$(printf '%s' "$R2_APPLY_STORAGE_TOKEN" | shasum -a 256 | cut -d' ' -f1)"
-          export AWS_SECRET_ACCESS_KEY
+          r2_secret_key="$(printf '%s' "$R2_APPLY_STORAGE_TOKEN" | shasum -a 256 | cut -d' ' -f1)"
           export AWS_ENDPOINT_URL_S3="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
           export TF_ENCRYPTION='
           key_provider "pbkdf2" "state" {
@@ -105,6 +115,10 @@ jobs:
             method   = method.aes_gcm.state
             enforced = true
           }'
-          tofu init -input=false
+          # R2 credentials as explicit backend config, not AWS_* env — the
+          # aws provider owns those names now (OIDC step above).
+          tofu init -input=false \
+            -backend-config="access_key=${R2_APPLY_ACCESS_KEY_ID}" \
+            -backend-config="secret_key=${r2_secret_key}"
           tofu plan -out=tfplan -input=false
           tofu apply -input=false tfplan

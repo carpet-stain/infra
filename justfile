@@ -28,6 +28,13 @@ format:
 tofu *args:
     scripts/with-infra-secrets.sh tofu {{ args }}
 
+# The IAM/OIDC/KMS bootstrap module (ADR-0010): separate state in the same
+# R2 bucket, applied only locally with the bootstrap key — never by CI.
+# Same Keychain-gated wrapper; no GitHub token needed (no github provider
+# in iam/). Expect two Keychain prompts: infra-bws, then infra-aws-bootstrap.
+tofu-iam *args:
+    scripts/with-infra-secrets.sh tofu -chdir=iam {{ args }}
+
 # Apply under the elevated session token — mutations need Administration,
 # which the routine GH_TOKEN deliberately lacks — with the same
 # Keychain-gated backend-secret fetch wrapped around it.

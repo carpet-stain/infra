@@ -11,8 +11,9 @@ Follow it in order; later steps depend on earlier ones.
 ## 1. Tools and a Cloudflare R2 bucket
 
 Install from Homebrew: `tenv`, `tflint`, `trivy`, `lefthook`, `just`,
-`direnv`. In Cloudflare's dashboard, create the state backend by hand —
-this isn't tofu-managed yet (tracked as a known gap, see AGENTS.md):
+`direnv`, and `awscli` (used by §10's parameter population). In
+Cloudflare's dashboard, create the state backend by hand — this isn't
+tofu-managed yet (tracked as a known gap, see AGENTS.md):
 
 - An R2 bucket named `tofu-state`.
 - An R2 API token scoped to **Object Read & Write** on that bucket. The
@@ -239,7 +240,20 @@ live; at decommission, #126 rewrites that section away.)
           "iam:PutRolePolicy",
           "iam:GetRolePolicy",
           "iam:ListRolePolicies",
-          "iam:ListAttachedRolePolicies"
+          "iam:ListAttachedRolePolicies",
+          "iam:CreateUser",
+          "iam:GetUser",
+          "iam:PutUserPolicy",
+          "iam:GetUserPolicy",
+          "iam:ListGroupsForUser",
+          "iam:UpdateAssumeRolePolicy",
+          "iam:UpdateRole",
+          "iam:DeleteRole",
+          "iam:DeleteRolePolicy",
+          "iam:DeleteUser",
+          "iam:DeleteUserPolicy",
+          "iam:DeleteOpenIDConnectProvider",
+          "iam:UpdateOpenIDConnectProviderThumbprint"
         ],
         "Resource": "*"
       },
@@ -261,7 +275,11 @@ live; at decommission, #126 rewrites that section away.)
 
   The `iam:Get*`/`iam:List*` entries extend ADR-0010's write-action list:
   tofu reads back everything it creates on the next refresh, so the
-  writes alone can't converge a plan. `kms:*` is on `Resource: "*"`
+  writes alone can't converge a plan. The `Update*`/`Delete*` entries are
+  the same lesson one step later — tofu owns these resources' whole
+  lifecycle, and a create-only list turns every trust-policy fix or
+  refactor into another console round-trip (both learned from live 403s,
+  not guessed). `kms:*` is on `Resource: "*"`
   because `kms:CreateKey` can't be scoped to a key ARN that doesn't
   exist yet — the two tier keys are the only keys this account will ever
   hold, so `*` covers exactly them; tighten to the two ARNs after #121
@@ -281,6 +299,89 @@ live; at decommission, #126 rewrites that section away.)
   Once #122 confirms OIDC works for every CI path, **deactivate (don't
   delete)** the key — it stays as local break-glass, a standing audit
   item (ADR-0010's step 7).
+
+## 10. Apply the IAM module, then populate the parameters
+
+Second child of the migration (#121, ADR-0010): the trust roots as code,
+then the secret values by hand. Order matters — CI's OIDC roles must exist
+before any root-module change that touches AWS can plan in CI.
+
+- **Apply the bootstrap module** (expect two Keychain prompts per run —
+  `infra-bws`, then `infra-aws-bootstrap`):
+
+  ```sh
+  just tofu-iam init
+  just tofu-iam apply
+  ```
+
+  Creates the GitHub OIDC provider, the roles (`infra-plan-read`,
+  `infra-apply`, `infra-vend-write`, the `infra-local-read` user), and the
+  two tier keys (`alias/infra-secrets`, `alias/runtime-secrets`).
+
+- **Seed the role-ARN variables** the workflows assume (from
+  `just tofu-iam output`), under the elevated session:
+
+  ```sh
+  env -u GH_TOKEN -u GITHUB_TOKEN gh variable set AWS_PLAN_ROLE_ARN   # plan_role_arn output
+  env -u GH_TOKEN -u GITHUB_TOKEN gh variable set AWS_APPLY_ROLE_ARN  # apply_role_arn output
+  ```
+
+- **Apply the root module** (`just tofu init` once to install the aws
+  provider, then `just tofu-apply`) — creates the eight `/infra/*`
+  parameters as `PLACEHOLDER`s (`ssm.tf`).
+
+- **Hand-populate every value from its live BWS copy** — the
+  highest-risk manual step in the migration: a placeholder silently read
+  as the state passphrase fails state decryption, not loud. Values ride a
+  0600 mktemp file (`--cli-input-json` can't read a pipe — verified
+  against a live ParamValidation error), never argv:
+
+  ```sh
+  export AWS_SECRET_ACCESS_KEY="$(security find-generic-password -s infra-aws-bootstrap -w)"
+  export AWS_ACCESS_KEY_ID=<the item's acct attribute> AWS_REGION=us-east-1
+  export BWS_ACCESS_TOKEN="$(security find-generic-password -s infra-bws -w)"
+  secrets="$(bws secret list "$TF_VAR_bws_infra_project_id" --output json --color no)"
+
+  map="GH_APP_PRIVATE_KEY=gh-app-private-key
+  CLOUDFLARE_API_TOKEN=cloudflare-api-token
+  TF_STATE_PASSPHRASE=tf-state-passphrase
+  R2_ACCOUNT_ID=r2-account-id
+  R2_PLAN_ACCESS_KEY_ID=r2-plan-access-key-id
+  R2_PLAN_STORAGE_TOKEN=r2-plan-storage-token
+  R2_APPLY_ACCESS_KEY_ID=r2-apply-access-key-id
+  R2_APPLY_STORAGE_TOKEN=r2-apply-storage-token"
+
+  tmp="$(mktemp)"
+  trap 'rm -f "$tmp"' EXIT
+  while IFS='=' read -r key param; do
+    jq -er --arg k "$key" --arg n "/infra/$param" \
+      '{Name: $n, Type: "SecureString", KeyId: "alias/infra-secrets",
+        Overwrite: true, Value: first(.[] | select(.key == $k) | .value)}' \
+      <<<"$secrets" >"$tmp"
+    aws ssm put-parameter --cli-input-json "file://$tmp" \
+      --output text --query Version
+  done <<<"$map"
+  rm -f "$tmp"
+  ```
+
+- **Verify one read of each before anything consumes them** (the epic's
+  gate before #122): compare digests, never eyeball truncated secrets.
+  Both sides gain a trailing newline the same way, so the digests match
+  exactly when the values do:
+
+  ```sh
+  while IFS='=' read -r key param; do
+    a="$(aws ssm get-parameter --name "/infra/$param" --with-decryption \
+      --query Parameter.Value --output text | shasum -a 256 | cut -d' ' -f1)"
+    b="$(jq -er --arg k "$key" 'first(.[] | select(.key == $k) | .value)' \
+      <<<"$secrets" | shasum -a 256 | cut -d' ' -f1)"
+    [ "$a" = "$b" ] && echo "ok   /infra/$param" || echo "FAIL /infra/$param"
+  done <<<"$map"
+  ```
+
+  Every line must read `ok`. **No BWS value is edited or deleted here** —
+  the dual-read window (#119's hard rule) stays safe only as long as
+  Bitwarden keeps serving every reader that hasn't cut over yet.
 
 ## What's still manual, permanently
 
