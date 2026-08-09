@@ -2,31 +2,39 @@
 
 The one-time sequence to get from "nothing exists" to a working
 tofu-managed GitHub account with automated plan-on-PR and apply-on-merge.
-Assumes a personal GitHub account (not an organization) and a Cloudflare
-account for the state backend. Ongoing day-to-day workflow, once this is
-done, is AGENTS.md's job — this doc only covers getting there once.
+Assumes a personal GitHub account (not an organization), a Cloudflare
+account for the state backend, and an AWS account for the machine-secret
+store (ADR-0010). Ongoing day-to-day workflow, once this is done, is
+AGENTS.md's job — this doc only covers getting there once.
 
-Follow it in order; later steps depend on earlier ones.
+Follow it in order; later steps depend on earlier ones. The ordering has
+one load-bearing subtlety: every local `tofu` run fetches its backend
+secrets from SSM (`scripts/with-infra-secrets.sh`), so the SSM parameters
+are hand-created with real values (§4) _before_ the first tofu command of
+any kind, and the root module later adopts them (§6).
 
 ## 1. Tools and a Cloudflare R2 bucket
 
 Install from Homebrew: `tenv`, `tflint`, `trivy`, `lefthook`, `just`,
-`direnv`, and `awscli` (used by §10's parameter population). In
-Cloudflare's dashboard, create the state backend by hand — this isn't
-tofu-managed yet (tracked as a known gap, see AGENTS.md):
+`direnv`, and `awscli` (§4's parameter population and every wrapper-run
+tofu use it). In Cloudflare's dashboard, create the state backend by
+hand — this isn't tofu-managed yet (tracked as a known gap, see AGENTS.md):
 
 - An R2 bucket named `tofu-state`.
-- An R2 API token scoped to **Object Read & Write** on that bucket. The
-  access key ID is the token's ID (shown at creation, or
-  `GET /user/tokens/verify`); the secret is derived from the token value
-  (`.envrc` does this — see ADR-0002).
+- Two R2 API tokens scoped to that bucket: one **Object Read & Write**
+  (local + CI apply) and one **Object Read only** (CI plan/drift). For
+  each, the access key ID is the token's ID (shown at creation, or
+  `GET /user/tokens/verify`); the S3 secret is derived from the token
+  value by the consumers (`sha256`, ADR-0002) — record the raw values,
+  they go into SSM in §4.
 - A state encryption passphrase: `openssl rand -hex 32`, saved in a
   password manager. Losing it means every resource has to be re-imported,
   not recovered.
 
 Clone this repo (or start a fresh one from it), copy
-`.envrc.local.example` to `.envrc.local`, fill in the R2 values and
-passphrase above, then `direnv allow` and `lefthook install`.
+`.envrc.local.example` to `.envrc.local` and fill it (the backend values
+do NOT go there — only SSM, §4), then `direnv allow` and
+`lefthook install`.
 
 ## 2. Two GitHub credentials, minted up front
 
@@ -35,9 +43,9 @@ just the bootstrap-time checklist for creating them the first time.
 
 - **Routine PAT** (fine-grained, github.com/settings/personal-access-tokens):
   Contents / Pull requests / Actions / Issues read-write, **not**
-  Administration. (No Secrets/Variables scope — the App key lives in
-  Bitwarden, not a `github_actions_secret`, so no plan refresh needs it;
-  ADR-0008.) Put the value in `.envrc.local`'s `GH_TOKEN`.
+  Administration. (No Secrets/Variables scope — no `github_actions_secret`
+  or `_variable` resource is tofu-managed, so no plan refresh needs it.)
+  Put the value in `.envrc.local`'s `GH_TOKEN`.
 - **Elevated session**: `gh auth login` with the full default scopes (or a
   classic PAT with `repo` + `delete_repo`), used only via
   `env -u GH_TOKEN -u GITHUB_TOKEN gh ...` / `just tofu-apply`. This is
@@ -45,163 +53,11 @@ just the bootstrap-time checklist for creating them the first time.
   PAT or a GitHub App can't reach (see AGENTS.md's Credentials section and
   ADR-0004's Consequences for exactly what those are).
 
-## 3. First apply — the actual governed repos
+## 3. Bootstrap the AWS account
 
-Populate `repos.tf`'s `local.repos`/`local.labels` with whatever repos and
-labels you're bringing under management, then:
-
-```sh
-just tofu init
-just tofu-apply
-```
-
-This creates/adopts `github_repository.this`, `github_issue_label.this`,
-and `github_repository_ruleset.this` for every repo in the map. Set
-`strict_required_status_checks_policy = true` on the ruleset **from this
-first apply**, not later — it costs nothing this early (no apply-on-merge
-pipeline exists yet to care about SHA drift), and retrofitting it after
-CI automation is live means an extra manual round-trip.
-
-## 4. Register the GitHub App — with the full permission set at once
-
-App registration has no tofu resource; it's a one-time manifest-flow
-step at github.com/settings/apps/new. The important part: **grant every
-permission category this setup will ever need in one pass**, since
-adding one later means every existing installation has to separately
-accept the update — a second manual step this bootstrap skips entirely
-by front-loading it.
-
-Repository permissions, all set to **write**:
-
-- Issues, Pull requests, Contents, Actions, Administration
-
-Leave Secrets and Variables alone — don't grant either. The App key lives in
-Bitwarden now (ADR-0008), so no minted token ever refreshes a
-`github_actions_secret`, and `github_actions_variable` is deliberately not
-tofu-managed at all (step 6 explains why) — the App never needs to touch
-either category.
-
-Uncheck **Active** under Webhooks (nothing here is event-driven), and set
-**Where can this GitHub App be installed?** to **Only on this account**.
-
-Capture all three outputs before moving on: the **App ID**, the
-**Client ID** (what CI will actually use — see AGENTS.md's App bullet for
-why Client ID over App ID), and the **private key** (`.pem`, shown once).
-
-## 5. Install the App, then propagate its credentials
-
-- **Install it** on every repo from step 3
-  (github.com/settings/installations → the App → Repository access →
-  Only select repositories). Manual, permanently — the installation-repository
-  API rejects fine-grained PATs and App tokens outright (confirmed against
-  GitHub's own docs and a live 403; see `app.tf`'s top comment). A future
-  new repo needs this same manual step, every time.
-- **Set the client ID** as a plain repo variable — also manual, also
-  permanent: `gh variable set GH_APP_CLIENT_ID --body <client id>`.
-  `actions/create-github-app-token` has no permission input that could
-  ever let a minted token refresh a `github_actions_variable` resource
-  (confirmed against a live 422 and the tool's own open issue #231), so
-  there's no path to making this tofu-managed today.
-
-Keep the `.pem` in a password manager for now — step 6 puts it in Bitwarden,
-not a native GitHub secret.
-
-## 6. Set up Bitwarden Secrets Manager
-
-Secrets live in Bitwarden Secrets Manager (ADR-0008), whose scaffolding has
-no Terraform resource — this is the one-time manual part. Do it in Bitwarden's
-web UI unless noted; AGENTS.md's grant table is the spec to match and to audit
-against later.
-
-- **Enable Secrets Manager** on a free Organization under the existing paid
-  personal account (it can't host SM directly — ADR-0008).
-- **Create two Projects:** `infra` and `vended-tokens`.
-- **Create three Machine Accounts** and set each one's Project grants
-  **exactly** as AGENTS.md's grant table shows. These grants are the security
-  boundary; the free tier caps at three, so there's no headroom. Capture each
-  account's access token.
-- **In `infra`, create the secrets** and note each UUID: `GH_APP_PRIVATE_KEY`
-  (paste the `.pem` from step 4), `CLOUDFLARE_API_TOKEN` (leave empty until #7
-  issues it), and the backend credentials CI and local fetch at runtime (#59,
-  ADR-0009) — `TF_STATE_PASSPHRASE`, `R2_ACCOUNT_ID`, the **Object Read only**
-  pair `R2_PLAN_ACCESS_KEY_ID`/`R2_PLAN_STORAGE_TOKEN`, and the read/write pair
-  `R2_APPLY_ACCESS_KEY_ID`/`R2_APPLY_STORAGE_TOKEN`. ⚠ An R2 token _value_ is
-  the raw token, not Cloudflare's pre-hashed Secret Access Key — the consumers
-  `sha256` it (ADR-0002); a key id and its token must come from the same R2
-  token.
-- **In `vended-tokens`, create one secret** (e.g. `LOCAL_GH_TOKEN`) with a
-  throwaway placeholder value — `vend-token.yml` overwrites it each run. Note
-  its UUID.
-- **Store the CI account's token in the login Keychain, gated** (#59) — this is
-  what local `just tofu` / `tofu-apply` fetch the backend secrets with:
-  `security add-generic-password -s infra-bws -a "$USER" -w` (paste the token;
-  omitting `-A` is deliberate, so each read prompts). Put the two non-secret
-  identifiers in `.envrc.local`: `BW_ORGANIZATION_ID` and
-  `TF_VAR_bws_infra_project_id` (the routine `GH_TOKEN` from step 2 stays there
-  too). Needs the `bws` CLI installed locally.
-- **Adopt the two `infra` secrets into tofu** (existence, never value): add a
-  temporary `import` block for each (`bitwarden-secrets_secret.app_private_key`
-  and `.cloudflare_api_token`, id = the UUID), `just tofu-apply` once, then
-  delete the spent `import` blocks (the repo's adopt-then-delete convention).
-  The values are dynamic — set in Bitwarden's UI, never in config.
-
-## 7. Seed CI's native credentials
-
-CI holds almost nothing native (#59, ADR-0009): three machine-account secrets,
-then variables holding the Bitwarden UUIDs it fetches everything else by. All
-under the elevated session; AGENTS.md's "CI secrets and variables" section has
-the full purpose of each.
-
-```sh
-env -u GH_TOKEN -u GITHUB_TOKEN gh secret set BWS_ACCESS_TOKEN            # CI machine account token (step 6)
-env -u GH_TOKEN -u GITHUB_TOKEN gh secret set BWS_ORGANIZATION_ID         # Bitwarden Org UUID
-env -u GH_TOKEN -u GITHUB_TOKEN gh secret set BWS_VENDING_ACCESS_TOKEN    # Vending machine account token
-
-# Mirror the two the plan job reads into the Dependabot store too (#89): a
-# `@dependabot rebase`-triggered pull_request run draws secrets.* from there,
-# not Actions. Same values as above, same manual mechanism — no tofu resource.
-env -u GH_TOKEN -u GITHUB_TOKEN gh secret set --app dependabot BWS_ACCESS_TOKEN
-env -u GH_TOKEN -u GITHUB_TOKEN gh secret set --app dependabot BWS_ORGANIZATION_ID
-
-env -u GH_TOKEN -u GITHUB_TOKEN gh variable set BWS_INFRA_PROJECT_ID          # infra Project UUID
-env -u GH_TOKEN -u GITHUB_TOKEN gh variable set BWS_APP_KEY_SECRET_ID         # GH_APP_PRIVATE_KEY secret UUID
-env -u GH_TOKEN -u GITHUB_TOKEN gh variable set BWS_PASSPHRASE_SECRET_ID      # TF_STATE_PASSPHRASE secret UUID
-env -u GH_TOKEN -u GITHUB_TOKEN gh variable set BWS_R2_ACCOUNT_SECRET_ID      # R2_ACCOUNT_ID secret UUID
-env -u GH_TOKEN -u GITHUB_TOKEN gh variable set BWS_R2_PLAN_KEY_SECRET_ID     # R2_PLAN_ACCESS_KEY_ID secret UUID
-env -u GH_TOKEN -u GITHUB_TOKEN gh variable set BWS_R2_PLAN_TOKEN_SECRET_ID   # R2_PLAN_STORAGE_TOKEN secret UUID
-env -u GH_TOKEN -u GITHUB_TOKEN gh variable set BWS_R2_APPLY_KEY_SECRET_ID    # R2_APPLY_ACCESS_KEY_ID secret UUID
-env -u GH_TOKEN -u GITHUB_TOKEN gh variable set BWS_R2_APPLY_TOKEN_SECRET_ID  # R2_APPLY_STORAGE_TOKEN secret UUID
-env -u GH_TOKEN -u GITHUB_TOKEN gh variable set BWS_VENDED_SECRET_ID          # vended-tokens secret UUID
-env -u GH_TOKEN -u GITHUB_TOKEN gh variable set GH_APP_CLIENT_ID              # App client id (step 5, if not already set)
-```
-
-Only the three machine-account tokens are secret; the UUIDs are variables —
-they identify a Project or secret, they grant nothing on their own. There's no
-native `GH_TOKEN` here: the plan job mints a read-scoped App token for the
-provider instead (#59), and the routine PAT stays local-only.
-
-## 8. Bring in the CI workflows
-
-Add `.github/actions/mint-app-token/` and the `.github/workflows/tofu-*.yml`
-files. Open a PR touching only these, confirm `tofu plan` posts a comment
-showing no unexpected drift, merge, and confirm `tofu-apply.yml` completes
-automatically.
-
-Then add `.github/workflows/vend-token.yml` and trigger it once via
-`workflow_dispatch` — confirm it publishes a fresh `{token, expires_at}` to
-the `vended-tokens` secret and that the minted token never appears unmasked in
-the run log. Local shells (`dotfiles`#377) read from there. From here on,
-AGENTS.md's Branch & PR model and Credentials sections are the operating
-manual, not this doc.
-
-## 9. Bootstrap the AWS account
-
-First step of the ADR-0010 migration (#119): machine secrets move to AWS
-SSM Parameter Store + IAM, and this ceremony has to exist before any tofu
-can touch AWS. Everything here runs as the **root user in the console** —
-the bootstrap IAM user created at the end is the account's first non-root
-credential. (While the migration runs, Bitwarden from step 6 stays
-live; at decommission, #126 rewrites that section away.)
+The machine-secret store's trust roots (ADR-0010). Everything here runs as
+the **root user in the console** — the bootstrap IAM user created at the
+end is the account's first non-root credential.
 
 - **Create the account**; root email and password go in the
   password-manager vault — human credentials, outside ADR-0010's
@@ -216,14 +72,14 @@ live; at decommission, #126 rewrites that section away.)
 - **Region: `us-east-1`.** SSM parameters are regional, so the pick is
   recorded here once, not re-derived (ADR-0010): the nearest existing
   tooling is GitHub-hosted runners (US-based), and nothing else in this
-  account has a location. #121 pins it as the `aws` provider's `region`
-  in `versions.tf`.
+  account has a location. `versions.tf` pins it as the `aws` provider's
+  `region`.
 - **Bootstrap IAM user**: IAM → Users → Create user `infra-bootstrap`,
   **no console access**, no group. Attach the inline policy below (name
   it `infra-bootstrap`), then create one access key (use case: CLI).
-  Not `AdministratorAccess`: it can create the OIDC provider, the five
-  roles, the two tier keys, and the SSM parameters (#121's two applies),
-  but can't touch billing, root, users, or its own permissions.
+  Not `AdministratorAccess`: it can create the OIDC provider, the roles,
+  the two tier keys, and the SSM parameters, but can't touch billing,
+  root, users beyond the module's own, or its own permissions.
 
   ```json
   {
@@ -282,11 +138,11 @@ live; at decommission, #126 rewrites that section away.)
   not guessed). `kms:*` is on `Resource: "*"`
   because `kms:CreateKey` can't be scoped to a key ARN that doesn't
   exist yet — the two tier keys are the only keys this account will ever
-  hold, so `*` covers exactly them; tighten to the two ARNs after #121
-  creates them if wanted.
+  hold, so `*` covers exactly them; tighten to the two ARNs after the IAM
+  module creates them if wanted.
 
-- **Store the access key in the login Keychain, gated** — same pattern
-  as `infra-bws` in step 6, one item holding both halves:
+- **Store the access key in the login Keychain, gated** — one item
+  holding both halves:
 
   ```sh
   security add-generic-password -s infra-aws-bootstrap -a <ACCESS_KEY_ID> -w
@@ -296,27 +152,85 @@ live; at decommission, #126 rewrites that section away.)
   so each read prompts. The key id is the item's account attribute
   (`security find-generic-password -s infra-aws-bootstrap | grep acct`);
   the secret comes back with `-w`. Local-only, never a GitHub secret.
-  Once #122 confirms OIDC works for every CI path, **deactivate (don't
-  delete)** the key — it stays as local break-glass, a standing audit
-  item (ADR-0010's step 7).
+  Once OIDC is confirmed working for every CI path (§10), **deactivate
+  (don't delete)** the key — it stays as local break-glass, reactivated
+  only for `just tofu-iam` runs, a standing audit item (ADR-0010's
+  step 7).
 
-## 10. Apply the IAM module, then populate the parameters
+## 4. Hand-populate the SSM parameters
 
-Second child of the migration (#121, ADR-0010): the trust roots as code,
-then the secret values by hand. Order matters — CI's OIDC roles must exist
-before any root-module change that touches AWS can plan in CI.
+Before any tofu: create the eight `/infra/*` parameters with the bootstrap
+key — the wrapper (`scripts/with-infra-secrets.sh`) reads four of them for
+every local run, including the very first `just tofu-iam init`. The values
+you have now come from §1; the two that don't exist yet (`gh-app-private-key`,
+`cloudflare-api-token`) get the literal `PLACEHOLDER` and are populated in
+§7-§9. This is the highest-risk manual step: a placeholder silently read
+as the state passphrase fails state decryption, not loud (the wrapper and
+CI both guard against the literal `PLACEHOLDER`, nothing can guard against
+a wrong real-looking value). Values ride a 0600 mktemp file
+(`--cli-input-json` can't read a pipe — verified against a live
+ParamValidation error), never argv:
 
-- **Apply the bootstrap module** (expect two Keychain prompts per run —
-  `infra-bws`, then `infra-aws-bootstrap`):
+```sh
+export AWS_SECRET_ACCESS_KEY="$(security find-generic-password -s infra-aws-bootstrap -w)"
+export AWS_ACCESS_KEY_ID=<the item's acct attribute> AWS_REGION=us-east-1
+
+tmp="$(mktemp)"
+trap 'rm -f "$tmp"' EXIT
+for param in gh-app-private-key cloudflare-api-token tf-state-passphrase \
+  r2-account-id r2-plan-access-key-id r2-plan-storage-token \
+  r2-apply-access-key-id r2-apply-storage-token; do
+  # paste each real value when prompted (PLACEHOLDER where noted above);
+  # ⚠ an R2 token value is the raw token, not Cloudflare's pre-hashed
+  # Secret Access Key — consumers sha256 it (ADR-0002), and a key id and
+  # its token must come from the same R2 token.
+  printf '%s: ' "/infra/$param" >&2
+  IFS= read -rs value && echo >&2
+  jq -n --arg n "/infra/$param" --arg v "$value" \
+    '{Name: $n, Type: "SecureString", KeyId: "alias/infra-secrets",
+      Overwrite: true, Value: $v}' >"$tmp"
+  aws ssm put-parameter --cli-input-json "file://$tmp" \
+    --output text --query Version
+done
+```
+
+Wait — `alias/infra-secrets` doesn't exist until §5's IAM apply. Chicken
+and egg resolves in the other direction for a true from-zero run: create
+these parameters **without** `KeyId` first (they encrypt under the
+account's default `aws/ssm` key), then re-run this loop after §5 to
+re-encrypt them under the tier key (`Overwrite: true` handles it), and
+verify each with a decrypting read
+(`aws ssm get-parameter --name /infra/<param> --with-decryption`).
+
+## 5. Apply the IAM module, seed the identities
+
+The trust roots as code (`iam/`, ADR-0010): the GitHub OIDC provider, the
+CI roles (`infra-plan-read`, `infra-apply`, `infra-vend-write`), the local
+users (`infra-local-apply`, `infra-local-read`), and the two tier keys
+(`alias/infra-secrets`, `alias/runtime-secrets`).
+
+- **Apply the bootstrap module** (Keychain prompt: `infra-aws-bootstrap`):
 
   ```sh
   just tofu-iam init
   just tofu-iam apply
   ```
 
-  Creates the GitHub OIDC provider, the roles (`infra-plan-read`,
-  `infra-apply`, `infra-vend-write`, the `infra-local-read` user), and the
-  two tier keys (`alias/infra-secrets`, `alias/runtime-secrets`).
+- **Re-run §4's loop** now that `alias/infra-secrets` exists (see the
+  chicken-and-egg note there), and verify one decrypting read of each.
+
+- **Create the two local users' access keys** (console, as root: IAM →
+  Users → the user → Security credentials → Create access key, use case
+  CLI) and store them:
+
+  ```sh
+  # elevated: crown-jewel read/write, so NO -A — every read prompts
+  security add-generic-password -s infra-aws-local-apply -a <ACCESS_KEY_ID> -w
+  # routine: runtime tier only, silent reads are fine (-A) — this one
+  # belongs to the consuming machine's dotfiles setup, see dotfiles'
+  # AGENTS.md Credentials
+  security add-generic-password -s infra-aws-local-read -a <ACCESS_KEY_ID> -A -w
+  ```
 
 - **Seed the role-ARN variables** the workflows assume (from
   `just tofu-iam output`), under the elevated session:
@@ -324,65 +238,99 @@ before any root-module change that touches AWS can plan in CI.
   ```sh
   env -u GH_TOKEN -u GITHUB_TOKEN gh variable set AWS_PLAN_ROLE_ARN   # plan_role_arn output
   env -u GH_TOKEN -u GITHUB_TOKEN gh variable set AWS_APPLY_ROLE_ARN  # apply_role_arn output
-  env -u GH_TOKEN -u GITHUB_TOKEN gh variable set AWS_VEND_ROLE_ARN   # vend_role_arn output (#124)
+  env -u GH_TOKEN -u GITHUB_TOKEN gh variable set AWS_VEND_ROLE_ARN   # vend_role_arn output
   ```
 
-- **Apply the root module** (`just tofu init` once to install the aws
-  provider, then `just tofu-apply`) — creates the eight `/infra/*`
-  parameters as `PLACEHOLDER`s (`ssm.tf`).
+## 6. First root apply — the governed repos and the parameter shells
 
-- **Hand-populate every value from its live BWS copy** — the
-  highest-risk manual step in the migration: a placeholder silently read
-  as the state passphrase fails state decryption, not loud. Values ride a
-  0600 mktemp file (`--cli-input-json` can't read a pipe — verified
-  against a live ParamValidation error), never argv:
+Populate `repos.tf`'s `local.repos`/`local.labels` with whatever repos and
+labels you're bringing under management. `ssm.tf` declares the eight
+parameters §4 already created by hand, so adopt them with temporary
+`import` blocks (`id` = the parameter name, e.g. `/infra/tf-state-passphrase`;
+the repo's adopt-then-delete convention), then:
 
-  ```sh
-  export AWS_SECRET_ACCESS_KEY="$(security find-generic-password -s infra-aws-bootstrap -w)"
-  export AWS_ACCESS_KEY_ID=<the item's acct attribute> AWS_REGION=us-east-1
-  export BWS_ACCESS_TOKEN="$(security find-generic-password -s infra-bws -w)"
-  secrets="$(bws secret list "$TF_VAR_bws_infra_project_id" --output json --color no)"
+```sh
+just tofu init
+just tofu-apply
+```
 
-  map="GH_APP_PRIVATE_KEY=gh-app-private-key
-  CLOUDFLARE_API_TOKEN=cloudflare-api-token
-  TF_STATE_PASSPHRASE=tf-state-passphrase
-  R2_ACCOUNT_ID=r2-account-id
-  R2_PLAN_ACCESS_KEY_ID=r2-plan-access-key-id
-  R2_PLAN_STORAGE_TOKEN=r2-plan-storage-token
-  R2_APPLY_ACCESS_KEY_ID=r2-apply-access-key-id
-  R2_APPLY_STORAGE_TOKEN=r2-apply-storage-token"
+This creates/adopts `github_repository.this`, `github_issue_label.this`,
+and `github_repository_ruleset.this` for every repo in the map, and brings
+the parameters under management (existence and metadata only — values stay
+hand-set, `ignore_changes = [value]`). Delete the spent `import` blocks.
+Set `strict_required_status_checks_policy = true` on the ruleset **from
+this first apply**, not later — it costs nothing this early (no
+apply-on-merge pipeline exists yet to care about SHA drift), and
+retrofitting it after CI automation is live means an extra manual
+round-trip.
 
-  tmp="$(mktemp)"
-  trap 'rm -f "$tmp"' EXIT
-  while IFS='=' read -r key param; do
-    jq -er --arg k "$key" --arg n "/infra/$param" \
-      '{Name: $n, Type: "SecureString", KeyId: "alias/infra-secrets",
-        Overwrite: true, Value: first(.[] | select(.key == $k) | .value)}' \
-      <<<"$secrets" >"$tmp"
-    aws ssm put-parameter --cli-input-json "file://$tmp" \
-      --output text --query Version
-  done <<<"$map"
-  rm -f "$tmp"
-  ```
+## 7. Register the GitHub App — with the full permission set at once
 
-- **Verify one read of each before anything consumes them** (the epic's
-  gate before #122): compare digests, never eyeball truncated secrets.
-  Both sides gain a trailing newline the same way, so the digests match
-  exactly when the values do:
+App registration has no tofu resource; it's a one-time manifest-flow
+step at github.com/settings/apps/new. The important part: **grant every
+permission category this setup will ever need in one pass**, since
+adding one later means every existing installation has to separately
+accept the update — a second manual step this bootstrap skips entirely
+by front-loading it.
 
-  ```sh
-  while IFS='=' read -r key param; do
-    a="$(aws ssm get-parameter --name "/infra/$param" --with-decryption \
-      --query Parameter.Value --output text | shasum -a 256 | cut -d' ' -f1)"
-    b="$(jq -er --arg k "$key" 'first(.[] | select(.key == $k) | .value)' \
-      <<<"$secrets" | shasum -a 256 | cut -d' ' -f1)"
-    [ "$a" = "$b" ] && echo "ok   /infra/$param" || echo "FAIL /infra/$param"
-  done <<<"$map"
-  ```
+Repository permissions, all set to **write**:
 
-  Every line must read `ok`. **No BWS value is edited or deleted here** —
-  the dual-read window (#119's hard rule) stays safe only as long as
-  Bitwarden keeps serving every reader that hasn't cut over yet.
+- Issues, Pull requests, Contents, Actions, Administration
+
+Leave Secrets and Variables alone — don't grant either. The App key lives
+in SSM (ADR-0010), so no minted token ever refreshes a
+`github_actions_secret`, and `github_actions_variable` is deliberately not
+tofu-managed at all (§8 explains why) — the App never needs to touch
+either category.
+
+Uncheck **Active** under Webhooks (nothing here is event-driven), and set
+**Where can this GitHub App be installed?** to **Only on this account**.
+
+Capture all three outputs before moving on: the **App ID**, the
+**Client ID** (what CI will actually use — see AGENTS.md's App bullet for
+why Client ID over App ID), and the **private key** (`.pem`, shown once).
+Populate `/infra/gh-app-private-key` with the `.pem` now — §4's loop shape,
+one parameter.
+
+## 8. Install the App, then propagate its credentials
+
+- **Install it** on every repo from step 6
+  (github.com/settings/installations → the App → Repository access →
+  Only select repositories). Manual, permanently — the installation-repository
+  API rejects fine-grained PATs and App tokens outright (confirmed against
+  GitHub's own docs and a live 403; see `app.tf`'s top comment). A future
+  new repo needs this same manual step, every time.
+- **Set the client ID** as a plain repo variable — also manual, also
+  permanent: `gh variable set GH_APP_CLIENT_ID --body <client id>`.
+  `actions/create-github-app-token` has no permission input that could
+  ever let a minted token refresh a `github_actions_variable` resource
+  (confirmed against a live 422 and the tool's own open issue #231), so
+  there's no path to making this tofu-managed today.
+
+## 9. Cloudflare API token and the last variable
+
+Create the least-privilege Cloudflare API token per
+`.envrc.local.example`'s comment (Zone Read / DNS Edit / R2 Storage Edit),
+put it in `.envrc.local`'s `CLOUDFLARE_API_TOKEN`, and populate
+`/infra/cloudflare-api-token` with the same value (§4's loop shape). Seed
+the account id: `env -u GH_TOKEN -u GITHUB_TOKEN gh variable set
+CLOUDFLARE_ACCOUNT_ID`.
+
+## 10. Bring in the CI workflows
+
+Add `.github/actions/mint-app-token/`, `.github/actions/read-ssm-params/`,
+and the `.github/workflows/tofu-*.yml` files. Open a PR touching only
+these, confirm `tofu plan` posts a comment showing no unexpected drift
+(this exercises `infra-plan-read` end to end), merge, and confirm
+`tofu-apply.yml` completes automatically (`infra-apply`).
+
+Then add `.github/workflows/vend-token.yml` and trigger it once via
+`workflow_dispatch` — confirm it publishes a fresh `{token, expires_at}`
+to `/runtime/vended-token` and that the minted token never appears
+unmasked in the run log. Local shells (`dotfiles`#377) read from there.
+Once every path is green, deactivate the bootstrap key (§3). From here on,
+AGENTS.md's Branch & PR model and Credentials sections are the operating
+manual, not this doc.
 
 ## What's still manual, permanently
 
@@ -396,16 +344,15 @@ tooling gaps:
   rejects every non-classic token type).
 - Setting `GH_APP_CLIENT_ID` if it's ever lost (no App-minted token can
   refresh a `github_actions_variable` resource).
-- Every CI secret's first seeding, and any App-manifest permission
-  change plus its separate per-installation approval step.
-- The entire Bitwarden scaffolding — Organization, Projects, Machine
-  Accounts, and their Project grants (the provider only manages `secret`).
-  The grants are the security boundary; audit the live state against
-  AGENTS.md's grant table, since nothing enforces it.
-- The AWS account scaffolding (ADR-0010) — account creation, root MFA,
-  the zero-spend budget, and the bootstrap IAM user. After #122 demotes
-  its key, "still deactivated, still needed" joins the periodic audit
-  alongside the containment invariant.
+- Any App-manifest permission change plus its separate per-installation
+  approval step.
+- Every SSM parameter _value_ — hand-populated (§4), `ignore_changes`d;
+  tofu manages existence and metadata only (ADR-0010).
+- The AWS account scaffolding — account creation, root MFA, the
+  zero-spend budget, the bootstrap IAM user, and every IAM user's access
+  key + Keychain item. "Bootstrap key still deactivated, still needed"
+  joins the periodic audit alongside the containment invariant
+  (`iam/main.tf`'s header, ADR-0010 as amended by #126).
 
 See AGENTS.md's Credentials section for the day-to-day version of this
 list, and ADR-0004/ADR-0005 for the full reasoning behind the model.

@@ -12,23 +12,12 @@
 # one-time-manual precedent as registration itself. See #30.
 
 # The App's private key (#29) — this account's highest-value credential
-# (ADR-0004/0005) — lives in Bitwarden's `infra` Project, migrated off the
-# native GitHub Actions secret (#47, ADR-0008). No `value` in config: the key
-# is set in Bitwarden's UI and adopted with a temporary `import` block
-# (README's adopt-then-delete convention). `ignore_changes = [value]` is
-# load-bearing — without it the provider treats the secret as
-# generator-managed and plans to overwrite the `.pem` with a random value on
-# apply; ignoring the attribute keeps rotation a UI-only action. CI reads the
-# key via bitwarden/sm-action at mint time, never a native secret.
-resource "bitwarden-secrets_secret" "app_private_key" {
-  key        = "GH_APP_PRIVATE_KEY"
-  project_id = var.bws_infra_project_id
-  note       = "GitHub App RSA private key (#29, ADR-0008). Rotate by setting the new value in the Bitwarden UI; tofu ignores the value."
-
-  lifecycle {
-    ignore_changes = [value]
-  }
-}
+# (ADR-0004/0005) — lives in SSM at /infra/gh-app-private-key (ssm.tf,
+# ADR-0010), hand-populated like every /infra/* value. Its Bitwarden home
+# (ADR-0008) was decommissioned by #126 — via `tofu state rm`, not a
+# removed{} block: the provider live-authenticates at plan time (confirmed
+# on #146's CI), so a declarative forget could never run against a
+# torn-down Organization.
 
 # Drop the native GitHub Actions secret #31 created from tofu's state — #47
 # supersedes its mechanism, and leaving it managed would be a second source

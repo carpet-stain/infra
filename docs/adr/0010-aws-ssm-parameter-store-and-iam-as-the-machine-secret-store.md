@@ -328,3 +328,35 @@ AWS SSM/IAM pricing or availability changes materially, or if a genuine
 compute workload later gives this account a reason to be AWS-native beyond
 secrets — neither is expected, and this ADR doesn't design for it ahead of
 time.
+
+## Amendment — #126 (2026-08-08): the local elevated identity
+
+The decommission child surfaced a gap the original text never resolved:
+routine local tofu runs (`just tofu` / `just tofu-apply` on the root
+module) need a working crown-jewel credential, twice over — a plan
+refreshes the `/infra/*` SecureString parameters (a decrypting read), and
+`scripts/with-infra-secrets.sh` must fetch the state passphrase and R2
+credentials from somewhere once Bitwarden is gone. The original role
+matrix offered no identity for this: `infra-local-read` is runtime-tier
+only, and the bootstrap key is deactivated break-glass, explicitly "never
+used for routine work again."
+
+Decision: a dedicated **`infra-local-apply` IAM user**, holding the same
+read+write crown-jewel surface as the `infra-apply` CI role (they apply
+the same module; the grants are shared verbatim in `iam/main.tf`), with
+its access key hand-created in the console and stored in the login
+Keychain **without** an app ACL — every read prompts. The **audit
+invariant is amended accordingly**: from "no identity a local/agent shell
+holds resolves `kms:Decrypt` on `alias/infra-secrets`" to "no
+**silently-readable** local identity does" — the Keychain prompt is the
+named fence, the same human-in-the-loop trust model ADR-0009 established
+for the `infra-bws` item this replaces. Local and CI identities still
+share no credential, and `infra-local-apply` holds no `iam:*`/`kms:Put*`,
+so the trust roots stay reachable only through the bootstrap key's
+reactivation ceremony.
+
+Considered and rejected: keeping the invariant verbatim by storing local
+copies of the four backend values directly in the Keychain (two homes per
+value, rotation drift, and the SecureString refresh still needs _some_
+AWS credential); reactivating the bootstrap key per local run (routinely
+exercises a key holding `iam:*`/`kms:*`, the exact habit step 7 forbids).

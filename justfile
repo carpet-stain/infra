@@ -22,18 +22,20 @@ format:
     git ls-files -z '*.md' ':!:CHANGELOG.md' ':!:.claude/agent-memory/**' | xargs -0 prettier --write
 
 # Run OpenTofu (init, plan, state, ...). The backend passphrase + R2 creds are
-# fetched from Bitwarden at invocation via the Keychain-gated wrapper (#59,
-# ADR-0009) — expect a Keychain "Allow" prompt — not exported ambiently.
-# GITHUB_TOKEN comes from the routine GH_TOKEN alias (.envrc), unchanged.
+# fetched from SSM at invocation via the Keychain-gated wrapper (#126,
+# ADR-0010; the never-ambient rule is #59/ADR-0009) — expect one Keychain
+# "Allow" prompt (infra-aws-local-apply). GITHUB_TOKEN comes from the
+# routine GH_TOKEN alias (.envrc), unchanged.
 tofu *args:
     scripts/with-infra-secrets.sh tofu {{ args }}
 
 # The IAM/OIDC/KMS bootstrap module (ADR-0010): separate state in the same
 # R2 bucket, applied only locally with the bootstrap key — never by CI.
-# Same Keychain-gated wrapper; no GitHub token needed (no github provider
-# in iam/). Expect two Keychain prompts: infra-bws, then infra-aws-bootstrap.
+# Same wrapper in --bootstrap mode (Keychain prompt: infra-aws-bootstrap);
+# reactivate the break-glass key in the console first, deactivate after
+# (docs/BOOTSTRAP.md). No GitHub token needed (no github provider in iam/).
 tofu-iam *args:
-    scripts/with-infra-secrets.sh tofu -chdir=iam {{ args }}
+    scripts/with-infra-secrets.sh --bootstrap tofu -chdir=iam {{ args }}
 
 # Apply under the elevated session token — mutations need Administration,
 # which the routine GH_TOKEN deliberately lacks — with the same

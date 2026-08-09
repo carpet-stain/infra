@@ -13,10 +13,6 @@ terraform {
       source  = "integrations/github"
       version = "~> 6.13"
     }
-    bitwarden-secrets = {
-      source  = "bitwarden/bitwarden-secrets"
-      version = "~> 1.0"
-    }
     cloudflare = {
       source  = "cloudflare/cloudflare"
       version = "~> 5.0"
@@ -47,22 +43,6 @@ provider "github" {
   owner = "carpet-stain"
 }
 
-# Bitwarden Secrets Manager, the account's secret store (ADR-0008). Secret
-# material is environment-sourced — the machine account's token via
-# BW_ACCESS_TOKEN and the org UUID via BW_ORGANIZATION_ID (both Sensitive,
-# both from .envrc.local, same never-a-literal-in-source discipline ADR-0002
-# applies to R2 credentials). The endpoints are the opposite: public,
-# region-fixed Bitwarden-cloud URLs — not account identifiers, not secret —
-# and the provider has NO defaults for them (it errors at configure/plan
-# without them), so they're pinned here rather than env-sourced. US cloud;
-# EU would be api.bitwarden.eu / identity.bitwarden.eu. NOTE the prefix: the
-# provider reads BW_*; the `bws` CLI the vend workflow uses for writes reads
-# BWS_* — different tokens for different machine accounts, don't cross them.
-provider "bitwarden-secrets" {
-  api_url      = "https://api.bitwarden.com"
-  identity_url = "https://identity.bitwarden.com"
-}
-
 # Cloudflare account governance (#7, epic #6): the provider that the R2
 # state bucket (#8) and DNS (#9) will be managed through. Auth is a
 # least-privilege API token via the CLOUDFLARE_API_TOKEN env var (from
@@ -84,10 +64,10 @@ provider "cloudflare" {}
 #    resurrect the plan job's expired read-only creds at apply. The R2
 #    backend cedes the AWS_* env names to this (its creds move to
 #    -backend-config flags in the workflows).
-#  - Local: explicit vars from the Keychain-fetched bootstrap key
-#    (with-infra-secrets.sh) — explicit config outranks env, which locally
-#    still carries the R2 backend credentials. Local applies are always
-#    fresh plan+apply, so baking is moot there.
+#  - Local: explicit vars from the Keychain-fetched infra-local-apply key
+#    (with-infra-secrets.sh; ADR-0010's #126 amendment) — explicit config
+#    outranks env, which locally still carries the R2 backend credentials.
+#    Local applies are always fresh plan+apply, so baking is moot there.
 provider "aws" {
   region     = "us-east-1"
   access_key = var.aws_access_key_id

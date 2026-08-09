@@ -16,11 +16,10 @@ inputs:
     required: true
   private-key:
     description: >
-      The App's private key — read from SSM (/infra/gh-app-private-key) via
-      read-ssm-params in the tofu workflows (#122, ADR-0010); vend-token.yml
-      still reads it from Bitwarden until #124. Same pass-through
-      requirement as client-id: the caller reads it and passes it in
-      explicitly.
+      The App's private key — read from SSM (/infra/gh-app-private-key):
+      via read-ssm-params in the tofu workflows (#122, ADR-0010), inline in
+      vend-token.yml (#124). Same pass-through requirement as client-id:
+      the caller reads it and passes it in explicitly.
     required: true
   repositories:
     description: Comma or newline-separated repos the token can access.
@@ -101,7 +100,7 @@ inputs:
       Set "true" to NOT revoke the minted token when the job ends. Default
       (revoke) is right for in-job use like `tofu apply` — the token is spent
       by job end. The vend workflow sets this "true" because its token is
-      written to Bitwarden for a *later* consumer, so revoking it at job end
+      published to SSM for a *later* consumer, so revoking it at job end
       would hand out a dead token (401).
     required: false
     default: "false"

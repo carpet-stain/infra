@@ -40,25 +40,11 @@ jobs:
     # below, confined to the plan step), replacing the standing GH_TOKEN PAT;
     # the PR-comment step uses the workflow's own ephemeral github.token
     # (pull-requests: write, above), narrower than the old cross-repo PAT.
-    # The backend secrets + the App key come from SSM via the OIDC-assumed
-    # role (#122, ADR-0010) — BWS_ACCESS_TOKEN stays only because a plan
-    # refreshes the two bitwarden-secrets_secret resources still in state;
-    # it leaves with the provider at the decommission child (#126).
+    # Everything secret comes from SSM via the OIDC-assumed role (#122,
+    # ADR-0010) — no secrets.* reference remains in this job (#126), which
+    # also retires #89's Dependabot-store mirroring concern: vars.* don't
+    # swap stores on a Dependabot-actored run.
     env:
-      # The bitwarden-secrets provider (ADR-0008) configures from the
-      # environment; a plan refreshes the managed secrets, which needs read
-      # on `infra`.
-      #
-      # This is the one job here triggered by `pull_request`, so it's the
-      # one exposed to #89: a Dependabot-actored run (e.g. `@dependabot
-      # rebase`) draws secrets.* from the repo's Dependabot store, not
-      # Actions — both BWS_ACCESS_TOKEN and BWS_ORGANIZATION_ID have to be
-      # mirrored there too (AGENTS.md's CI secrets and variables, seeded in
-      # docs/BOOTSTRAP.md's step 7) or the provider fails to authenticate
-      # whenever the actor is dependabot[bot].
-      BW_ACCESS_TOKEN: ${{ secrets.BWS_ACCESS_TOKEN }}
-      BW_ORGANIZATION_ID: ${{ secrets.BWS_ORGANIZATION_ID }}
-      TF_VAR_bws_infra_project_id: ${{ vars.BWS_INFRA_PROJECT_ID }}
       TF_VAR_cloudflare_account_id: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
     steps:
       - uses: actions/checkout@v7

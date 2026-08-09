@@ -23,18 +23,19 @@ verbatim.
 - `main.tf` — the resources (`github_repository.this`, `github_issue_label.this`,
   `github_repository_ruleset.this`); governance invariants that hold for every
   repo live here, not in per-repo data.
-- `versions.tf` — core + provider pins (`github`, `bitwarden-secrets`), R2
+- `versions.tf` — core + provider pins (`github`, `cloudflare`, `aws`), R2
   backend.
-- `app.tf` — GitHub App credential wiring (ADR-0004/0005): the private key,
-  now a `bitwarden-secrets_secret` in the `infra` Project (ADR-0008), not a
-  native GH Actions secret. The client ID variable isn't here — set by hand
-  (`gh variable set GH_APP_CLIENT_ID`), since no App-minted token can refresh
-  a `github_actions_variable` resource (`actions/create-github-app-token` has
-  no permission for it at all).
-- `cloudflare.tf` — the Cloudflare API token (#7) as a dynamic Bitwarden
-  secret (ADR-0008), value set in Bitwarden's UI, no consumer wired yet.
+- `app.tf` — GitHub App credential wiring (ADR-0004/0005): the manual
+  registration/installation record and the retired credential homes'
+  `removed{}` blocks. The key itself lives in SSM
+  (`/infra/gh-app-private-key`, ssm.tf). The client ID variable isn't here —
+  set by hand (`gh variable set GH_APP_CLIENT_ID`), since no App-minted
+  token can refresh a `github_actions_variable` resource
+  (`actions/create-github-app-token` has no permission for it at all).
+- `dns.tf` — Cloudflare zones and DNS records as config-as-data (#9).
 - `variables.tf` — apply-time inputs fed via `TF_VAR_*`, never a literal in
-  a committed file (currently the `infra` Bitwarden Project UUID).
+  a committed file (the aws provider's local key halves, the Cloudflare
+  account id).
 - `ssm.tf` — the `/infra/*` SSM parameters (ADR-0010, #121): existence and
   metadata only, values hand-populated and `ignore_changes`-ignored. No
   `/runtime/*` parameters by design — the vend workflow creates its own.
@@ -56,7 +57,8 @@ verbatim.
   scoped, rotating token to SSM's `/runtime/vended-token` for local/agent
   shells (#51/ADR-0008 for the vending model, #124/ADR-0010 for the store).
 - `docs/adr/` — architecture decisions (`.adr-dir` points here).
-- `scripts/` — `new-adr.sh`, `check-envrc-local-example.sh`.
+- `scripts/` — `with-infra-secrets.sh` (the Keychain-gated SSM fetch every
+  local tofu run rides), `new-adr.sh`, `check-envrc-local-example.sh`.
 - `justfile` / `lefthook*.yml` — base-owned composition root; a language overlay
   adds verbs/jobs in `*.lang` / `*-lang.yml`, never edits the base.
 
@@ -156,35 +158,37 @@ defeats the lock's purpose.
   `.envrc.local` — never a full `gh auth login` session. So an agent driving
   `gh` can't touch repo settings or branch protection. Secrets/Variables:
   Read-only used to be needed so `tofu plan` could refresh the App-key
-  `github_actions_secret`, but that key moved to Bitwarden (#47, ADR-0008)
-  and no `github_actions_secret`/`_variable` resource is tofu-managed
-  anymore, so neither category is required now.
+  `github_actions_secret`, but that key left native secrets long ago (#47;
+  it lives in SSM now, ADR-0010) and no `github_actions_secret`/`_variable`
+  resource is tofu-managed anymore, so neither category is required now.
 - Run local `tofu` through `just tofu` / `just tofu-apply` only, never bare.
   The elevated backend secrets (state passphrase, R2 read/write creds) are
-  fetched from Bitwarden at invocation by `scripts/with-infra-secrets.sh`,
-  gated behind a macOS Keychain prompt — not exported ambiently by direnv
-  (#59, ADR-0009), so a stray agent shell in this repo no longer holds them.
-  `.envrc.local` keeps only the routine `GH_TOKEN` (the github provider's
-  local read credential) and the non-secret Bitwarden identifiers
-  (`BW_ORGANIZATION_ID`, `TF_VAR_bws_infra_project_id`); the `infra`
-  machine-account token lives in the login Keychain (item `infra-bws`), added
-  without an app ACL so each read prompts. See `.envrc.local.example`.
-- AWS (ADR-0010): local `tofu` runs feed the aws provider the
-  bootstrap/break-glass key from the `infra-aws-bootstrap` Keychain item
-  (second gated prompt, docs/BOOTSTRAP.md §9) as explicit `TF_VAR`s — the
-  `AWS_*` env names locally carry the R2 backend credentials. CI holds no
-  AWS secret at all: each workflow assumes its OIDC role
-  (`vars.AWS_PLAN_ROLE_ARN` / `vars.AWS_APPLY_ROLE_ARN`) per job, creds
-  ride the env chain (never Tofu variables — a saved-plan apply would
-  replay them stale), and the R2 backend creds ride `-backend-config`
-  flags instead of env there.
+  fetched from SSM at invocation by `scripts/with-infra-secrets.sh` (#126,
+  ADR-0010), gated behind a macOS Keychain prompt — not exported ambiently
+  by direnv (#59, ADR-0009), so a stray agent shell in this repo never
+  holds them. The `infra-local-apply` IAM user's access key lives in the
+  login Keychain (item `infra-aws-local-apply`), added without an app ACL
+  so each read prompts; the same key rides explicit `TF_VAR`s into the aws
+  provider (the `AWS_*` env names locally carry the R2 backend
+  credentials). `.envrc.local` keeps only the routine `GH_TOKEN` and the
+  Cloudflare identifiers. See `.envrc.local.example`.
+- `just tofu-iam` (the trust-roots module) runs the wrapper in
+  `--bootstrap` mode instead: the `infra-aws-bootstrap` break-glass key
+  (docs/BOOTSTRAP.md), reactivated in the console for the run and
+  deactivated after — routine work never touches it. CI holds no AWS
+  secret at all: each workflow assumes its OIDC role
+  (`vars.AWS_PLAN_ROLE_ARN` / `vars.AWS_APPLY_ROLE_ARN` /
+  `vars.AWS_VEND_ROLE_ARN`) per job, creds ride the env chain (never Tofu
+  variables — a saved-plan apply would replay them stale), and the R2
+  backend creds ride `-backend-config` flags instead of env there.
 - Elevate explicitly only for the one action that needs admin:
   `env -u GH_TOKEN -u GITHUB_TOKEN gh ...` — both vars, since `.envrc` aliases
   `GITHUB_TOKEN` to the same scoped token, so dropping `GH_TOKEN` alone is a no-op.
 - `just tofu plan` uses the routine `GH_TOKEN` for the github provider (read);
   `just tofu-apply` swaps in the elevated session token (Administration) — both
   wrapped by the Keychain-gated backend-secret fetch. Losing the passphrase
-  means re-importing, not recovering (ADR-0002); it lives in Bitwarden now.
+  means re-importing, not recovering (ADR-0002); it lives in SSM now
+  (`/infra/tf-state-passphrase`).
 - A GitHub App (ADR-0004, `app.tf`) is registered and installed on every
   repo in `local.repos` for future CI-side credential delegation — both by
   hand, not tofu-managed. Installation-repository membership specifically
@@ -205,67 +209,47 @@ defeats the lock's purpose.
   403s: confirmed live when #22 adopted `golden-ratio-dual-gate` before this
   step was done).
 
-### Bitwarden Secrets Manager
+### Machine secrets — AWS SSM + IAM
 
-> Concrete realization of ADR-0008 for this repo. Secrets live in Bitwarden
-> Secrets Manager. The store's scaffolding — the Organization, both Projects,
-> all three Machine Accounts, and the grants between them — has no Terraform
-> resource (the provider only manages `secret`), so it's a one-time manual
-> bootstrap, same shape as the App's own registration; the from-zero sequence
-> is `docs/BOOTSTRAP.md`. This section is the ongoing reviewable spec.
+> Concrete realization of ADR-0010 for this repo (superseding ADR-0008/0009's
+> Bitwarden store, decommissioned at #126). Values live in SSM Parameter
+> Store; the role×path matrix is code (`iam/main.tf`), applied only via
+> `just tofu-iam` with the bootstrap key.
 
-The **Machine-Account-to-Project grants are the actual security boundary**
-(ADR-0008), and the provider can't manage them — so audit the live Bitwarden
-state against this table, since nothing else can. The two-Project split only
-holds while the grants stay exactly as below: no account a local shell holds
-can reach `infra`, and the CI and Local accounts share no Project.
+Two tiers, two KMS keys, path as the boundary: `/infra/*` (crown jewels —
+App key, state passphrase, R2 pairs, Cloudflare token; `alias/infra-secrets`)
+and `/runtime/*` (the rotating vended token; `alias/runtime-secrets`). Every
+identity needs both the SSM path grant and `kms:Decrypt` on that tier's key —
+two independent fences. The audit invariant (ADR-0010 as amended by #126):
+**no silently-readable local identity resolves `kms:Decrypt` on
+`alias/infra-secrets`**, and local and CI identities share no credential.
 
-| Machine Account | `infra`    | `vended-tokens` | Token held by                                                     |
-| --------------- | ---------- | --------------- | ----------------------------------------------------------------- |
-| CI              | read/write | —               | `BWS_ACCESS_TOKEN` (tofu plan/apply, #32 minting)                 |
-| Vending         | read       | read/write      | `BWS_VENDING_ACCESS_TOKEN` (unused since #124; tear down at #126) |
-| Local           | —          | read            | a local/agent shell (`dotfiles`#377, until #125)                  |
+| Identity            | Kind      | Surface                          | Held as                                                    |
+| ------------------- | --------- | -------------------------------- | ---------------------------------------------------------- |
+| `infra-plan-read`   | OIDC role | `/infra/*` read                  | no credential — assumed per job (plan/drift)               |
+| `infra-apply`       | OIDC role | `/infra/*` read/write            | no credential — assumed per job (apply/dispatch)           |
+| `infra-vend-write`  | OIDC role | App-key read, vended-token write | no credential — assumed per job (vend)                     |
+| `infra-local-apply` | IAM user  | `/infra/*` read/write            | Keychain `infra-aws-local-apply`, prompt-gated (no `-A`)   |
+| `infra-local-read`  | IAM user  | `/runtime/*` read                | Keychain (dotfiles' `infra-aws-local-read`), silent (`-A`) |
+| `infra-bootstrap`   | IAM user  | IAM/KMS/SSM trust roots          | Keychain `infra-aws-bootstrap`, prompt-gated, deactivated  |
 
-The free tier caps at **three** Machine Accounts, so this uses the entire
-budget — no headroom. The binding constraint is accounts, not Projects (2 of 3
-Projects used). A new secret class gets a **new Project in the free slot, read
-by an existing account** — not a merge of the CI-side accounts. That merge was
-ADR-0008's original guidance and is now stale: post-ADR-0009 the CI account is
-also the local Keychain credential, so merging would hand the unattended vend
-cron write-`infra`. Spend the last account slot (or the paid tier) only if a
-secret genuinely needs its own account boundary. See ADR-0008's #73 amendment.
+Parameter existence/metadata is tofu-managed (`ssm.tf`); values are
+hand-populated and `ignore_changes`-ignored. Periodic audit items: the
+bootstrap key still deactivated and still needed; `infra-vend-write`'s
+unattended crown-jewel read; the invariant above.
 
 **If vending stops:** scheduled workflows auto-disable after 60 days of repo
-inactivity (ADR-0008). Local shells then loud-fail on a stale token — the
-designed degradation. Re-enable `vend-token.yml` from the Actions tab (or run
-it once via `workflow_dispatch`) to resume.
+inactivity. Local shells then loud-fail on a stale token — the designed
+degradation. Re-enable `vend-token.yml` from the Actions tab (or run it once
+via `workflow_dispatch`) to resume.
 
 ### CI secrets and variables
 
-> Realizes #59/ADR-0009 (and #122/ADR-0010) on top of ADR-0003's saved-plan
-> model: CI holds almost nothing native — each tofu workflow assumes its OIDC
-> role and fetches the rest from SSM at runtime (`read-ssm-params`).
-
-The **complete native GitHub-secret footprint** across all workflows:
-
-| Native secret              | Used by             | Purpose                                                                                                                                                                                                                           |
-| -------------------------- | ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `BWS_ACCESS_TOKEN`         | plan/apply/dispatch | The `infra` CI machine account. Configures the `bitwarden-secrets` provider (`BW_ACCESS_TOKEN`), which a plan still refreshes for the two managed secrets. Leaves with the provider at #126; no `sm-action` fetch remains (#122). |
-| `BWS_ORGANIZATION_ID`      | plan/apply/dispatch | Bitwarden Org UUID (`BW_ORGANIZATION_ID`) — Sensitive, so a secret.                                                                                                                                                               |
-| `BWS_VENDING_ACCESS_TOKEN` | (none since #124)   | The distinct Vending machine account (read `infra`, read/write `vended-tokens`). vend-token.yml now runs on OIDC + SSM (#124, ADR-0010); the secret and account are torn down at #126.                                            |
-
-`BWS_ACCESS_TOKEN` and `BWS_ORGANIZATION_ID` are **mirrored into the repo's
-Dependabot secrets store**, not just Actions (#89): a `pull_request` run
-whose actor is `dependabot[bot]` (e.g. `@dependabot rebase`) draws
-`secrets.*` from the Dependabot store instead, and `tofu-plan.yml` is the
-one workflow here that triggers on `pull_request`. `vars.*` are unaffected —
-only `secrets.*` swap stores, and only plan is exposed (apply/dispatch never
-trigger off a Dependabot-actored event). Same non-tofu-managed shape as the
-Actions copy — see below.
-
-Everything else is **fetched from SSM at runtime** (#122, ADR-0010) via the
-job's OIDC-assumed role — no per-secret UUID variable needed, the `/infra/*`
-parameter names are literal in each workflow's `read-ssm-params` step:
+> Realizes ADR-0010 on top of ADR-0003's saved-plan model: CI holds **no
+> native GitHub secret at all** — each workflow assumes its OIDC role per
+> job and fetches secret values from SSM at runtime (`read-ssm-params`;
+> vend reads its one parameter inline). #143 tracks enforcing this as a CI
+> guard.
 
 - Fetched from SSM: `TF_STATE_PASSPHRASE`, `R2_ACCOUNT_ID`, the R2 pair
   (plan/drift read `R2_PLAN_*` — a separate **Object Read only** token;
@@ -277,26 +261,18 @@ parameter names are literal in each workflow's `read-ssm-params` step:
   PAT is retired, #59) and posts its PR comment via the ephemeral
   `github.token`. vend-token.yml reads only the App key, inline (#124) —
   its role's grant is the singular GetParameter on that one ARN.
-- **Variables** (not secret): `BWS_INFRA_PROJECT_ID` (the provider's
-  Project id) and `GH_APP_CLIENT_ID`. Plus the AWS role ARNs (ADR-0010,
-  also not secret — the trust policy's sub conditions are the gate):
-  `AWS_PLAN_ROLE_ARN`, `AWS_APPLY_ROLE_ARN`, `AWS_VEND_ROLE_ARN`. Every
-  `BWS_*_SECRET_ID` UUID variable is unreferenced now (#122 orphaned the
-  passphrase/R2/Cloudflare ones, #124 the App-key and vended ones) —
-  delete them with the BWS teardown at #126.
-- `CLOUDFLARE_ACCOUNT_ID` (#9): also a plain **variable**, not fetched from
-  Bitwarden — it's account-identifying, not secret, same reasoning as
-  `variables.tf`'s `cloudflare_account_id`. Fed straight to
-  `TF_VAR_cloudflare_account_id`.
+- **Variables** (not secret): `GH_APP_CLIENT_ID`, `CLOUDFLARE_ACCOUNT_ID`
+  (#9 — account-identifying, fed straight to
+  `TF_VAR_cloudflare_account_id`), and the AWS role ARNs (ADR-0010, the
+  trust policy's sub conditions are the gate): `AWS_PLAN_ROLE_ARN`,
+  `AWS_APPLY_ROLE_ARN`, `AWS_VEND_ROLE_ARN`.
 
-Seed the three native secrets, their two-secret Dependabot mirror, and the
-variables once via the elevated session (`gh secret set` / `gh secret set
---app dependabot` / `gh variable set`); the Bitwarden secrets they reference
-and the from-zero order live in `docs/BOOTSTRAP.md`. None of this can be
-tofu-managed — a repo can't provision its own CI's first credentials via its
-own CI, and mirroring them would mean `github_dependabot_secret` writing the
-same root credential into state a second time, for no less bootstrap-value
-reason than the Actions copy already isn't tofu-managed.
+Seed the variables once via the elevated session (`gh variable set`); the
+from-zero order lives in `docs/BOOTSTRAP.md`. None of this can be
+tofu-managed — a repo can't provision its own CI's first credentials via
+its own CI. No Dependabot secrets mirror remains: #89's exposure was the
+plan job reading `secrets.*` on a Dependabot-actored run, and no workflow
+reads `secrets.*` anymore.
 
 ## Terraform / OpenTofu conventions
 
@@ -329,8 +305,8 @@ reason than the Actions copy already isn't tofu-managed.
 - **State is a secret store.** The GitHub provider writes attribute values into
   state verbatim, so state is secret material (ADR-0002): remote R2 backend with
   locking; **client-side encryption enforced** via the `TF_ENCRYPTION` block
-  `scripts/with-infra-secrets.sh` builds at invocation from the
-  Bitwarden-fetched `TF_STATE_PASSPHRASE` (#59, ADR-0009), key material in the
+  `scripts/with-infra-secrets.sh` builds at invocation from the SSM-fetched
+  `TF_STATE_PASSPHRASE` (#59/ADR-0009, #126/ADR-0010), key material in the
   environment only. Never commit state, plans, or `.terraform/` (all
   gitignored); the lockfile _is_ committed.
 - **Refactor declaratively.** `moved {}` / `removed {}` / `import {}` blocks,

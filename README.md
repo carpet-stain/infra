@@ -10,15 +10,15 @@ moved here (its ADR-0022/0024 record the founding decisions and the move).
 
 Tools come from Homebrew: `tenv` (installs the OpenTofu version
 `required_version` pins), `tflint` (via `terraform-linters/tap`), `trivy`,
-`lefthook`, `just`, `direnv`. Copy `.envrc.local.example` to `.envrc.local`
-and fill it (GitHub scoped token + the Bitwarden org/Project ids), store the
-`infra` Bitwarden machine-account token in the login Keychain (gated — #59,
-ADR-0009), then `direnv allow` and `lefthook install`. Local `tofu` runs via
-`just`, which fetches the state passphrase + R2 creds from Bitwarden at
-invocation.
+`lefthook`, `just`, `direnv`, `awscli`. Copy `.envrc.local.example` to
+`.envrc.local` and fill it (GitHub scoped token + Cloudflare identifiers),
+store the `infra-local-apply` access key in the login Keychain (gated —
+ADR-0010's #126 amendment), then `direnv allow` and `lefthook install`.
+Local `tofu` runs via `just`, which fetches the state passphrase + R2 creds
+from SSM at invocation.
 
-This assumes the account's R2 bucket, GitHub App, Bitwarden store, and CI
-secrets already exist. Setting all of that up from nothing — a fresh GitHub account, no
+This assumes the account's R2 bucket, GitHub App, AWS account, and CI
+variables already exist. Setting all of that up from nothing — a fresh GitHub account, no
 state backend yet — is [`docs/BOOTSTRAP.md`](docs/BOOTSTRAP.md).
 
 ## Use
@@ -51,6 +51,6 @@ present yet). Architecture decisions live in
 [`docs/adr/`](docs/adr/README.md). This README is the human front door and
 points at those homes rather than restating them.
 
-Giving a **different** repo a secret from this account's Bitwarden store —
-which Project it belongs in, which credential it gets, how to fetch it at
+Giving a **different** repo a secret from this account's SSM store — which
+path it belongs under, which credential it gets, how to fetch it at
 runtime — is [`docs/CONSUMING-SECRETS.md`](docs/CONSUMING-SECRETS.md).
