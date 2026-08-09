@@ -53,8 +53,8 @@ verbatim.
   used by the four tofu workflows in place of `bitwarden/sm-action`.
 - `.github/workflows/` — `tofu-plan.yml`/`tofu-apply.yml` are the
   saved-plan-on-merge pipeline (ADR-0003); `vend-token.yml` publishes a
-  scoped, rotating token into Bitwarden's `vended-tokens` Project for
-  local/agent shells (#51, ADR-0008).
+  scoped, rotating token to SSM's `/runtime/vended-token` for local/agent
+  shells (#51/ADR-0008 for the vending model, #124/ADR-0010 for the store).
 - `docs/adr/` — architecture decisions (`.adr-dir` points here).
 - `scripts/` — `new-adr.sh`, `check-envrc-local-example.sh`.
 - `justfile` / `lefthook*.yml` — base-owned composition root; a language overlay
@@ -220,11 +220,11 @@ state against this table, since nothing else can. The two-Project split only
 holds while the grants stay exactly as below: no account a local shell holds
 can reach `infra`, and the CI and Local accounts share no Project.
 
-| Machine Account | `infra`    | `vended-tokens` | Token held by                                     |
-| --------------- | ---------- | --------------- | ------------------------------------------------- |
-| CI              | read/write | —               | `BWS_ACCESS_TOKEN` (tofu plan/apply, #32 minting) |
-| Vending         | read       | read/write      | `BWS_VENDING_ACCESS_TOKEN` (`vend-token.yml`)     |
-| Local           | —          | read            | a local/agent shell (`dotfiles`#377)              |
+| Machine Account | `infra`    | `vended-tokens` | Token held by                                                     |
+| --------------- | ---------- | --------------- | ----------------------------------------------------------------- |
+| CI              | read/write | —               | `BWS_ACCESS_TOKEN` (tofu plan/apply, #32 minting)                 |
+| Vending         | read       | read/write      | `BWS_VENDING_ACCESS_TOKEN` (unused since #124; tear down at #126) |
+| Local           | —          | read            | a local/agent shell (`dotfiles`#377, until #125)                  |
 
 The free tier caps at **three** Machine Accounts, so this uses the entire
 budget — no headroom. The binding constraint is accounts, not Projects (2 of 3
@@ -252,7 +252,7 @@ The **complete native GitHub-secret footprint** across all workflows:
 | -------------------------- | ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `BWS_ACCESS_TOKEN`         | plan/apply/dispatch | The `infra` CI machine account. Configures the `bitwarden-secrets` provider (`BW_ACCESS_TOKEN`), which a plan still refreshes for the two managed secrets. Leaves with the provider at #126; no `sm-action` fetch remains (#122). |
 | `BWS_ORGANIZATION_ID`      | plan/apply/dispatch | Bitwarden Org UUID (`BW_ORGANIZATION_ID`) — Sensitive, so a secret.                                                                                                                                                               |
-| `BWS_VENDING_ACCESS_TOKEN` | vend                | The distinct Vending machine account (read `infra`, read/write `vended-tokens`) — never the CI account, so the vended path can't reach CI's write grant on `infra`.                                                               |
+| `BWS_VENDING_ACCESS_TOKEN` | (none since #124)   | The distinct Vending machine account (read `infra`, read/write `vended-tokens`). vend-token.yml now runs on OIDC + SSM (#124, ADR-0010); the secret and account are torn down at #126.                                            |
 
 `BWS_ACCESS_TOKEN` and `BWS_ORGANIZATION_ID` are **mirrored into the repo's
 Dependabot secrets store**, not just Actions (#89): a `pull_request` run
@@ -275,15 +275,15 @@ parameter names are literal in each workflow's `read-ssm-params` step:
   App token from the key; the plan job mints an
   `administration:read`+`issues:read` token for the provider (the routine
   PAT is retired, #59) and posts its PR comment via the ephemeral
-  `github.token`.
+  `github.token`. vend-token.yml reads only the App key, inline (#124) —
+  its role's grant is the singular GetParameter on that one ARN.
 - **Variables** (not secret): `BWS_INFRA_PROJECT_ID` (the provider's
-  Project id), `BWS_APP_KEY_SECRET_ID` and `BWS_VENDED_SECRET_ID` (still
-  read by `vend-token.yml`'s `sm-action` fetch until #124), and
-  `GH_APP_CLIENT_ID`. Plus the AWS role ARNs (ADR-0010, also not secret —
-  the trust policy's sub conditions are the gate): `AWS_PLAN_ROLE_ARN`,
-  `AWS_APPLY_ROLE_ARN`. The other `BWS_*_SECRET_ID` UUID variables
-  (passphrase, R2, Cloudflare) are unreferenced since #122 — delete them
-  with the BWS teardown at #126.
+  Project id) and `GH_APP_CLIENT_ID`. Plus the AWS role ARNs (ADR-0010,
+  also not secret — the trust policy's sub conditions are the gate):
+  `AWS_PLAN_ROLE_ARN`, `AWS_APPLY_ROLE_ARN`, `AWS_VEND_ROLE_ARN`. Every
+  `BWS_*_SECRET_ID` UUID variable is unreferenced now (#122 orphaned the
+  passphrase/R2/Cloudflare ones, #124 the App-key and vended ones) —
+  delete them with the BWS teardown at #126.
 - `CLOUDFLARE_ACCOUNT_ID` (#9): also a plain **variable**, not fetched from
   Bitwarden — it's account-identifying, not secret, same reasoning as
   `variables.tf`'s `cloudflare_account_id`. Fed straight to

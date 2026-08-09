@@ -324,6 +324,7 @@ before any root-module change that touches AWS can plan in CI.
   ```sh
   env -u GH_TOKEN -u GITHUB_TOKEN gh variable set AWS_PLAN_ROLE_ARN   # plan_role_arn output
   env -u GH_TOKEN -u GITHUB_TOKEN gh variable set AWS_APPLY_ROLE_ARN  # apply_role_arn output
+  env -u GH_TOKEN -u GITHUB_TOKEN gh variable set AWS_VEND_ROLE_ARN   # vend_role_arn output (#124)
   ```
 
 - **Apply the root module** (`just tofu init` once to install the aws
