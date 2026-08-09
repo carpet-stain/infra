@@ -27,10 +27,10 @@ Access control is IAM-per-path with a KMS key per tier (ADR-0010): reading
 a parameter needs both the SSM path grant and `kms:Decrypt` on that tier's
 key — two independent fences.
 
-| Path         | Holds                                                                            | Who can read it                                                    |
-| ------------ | -------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| `/infra/*`   | Crown jewels — the App private key, state passphrase, R2 creds, Cloudflare token | `infra`'s CI roles and its prompt-gated local identity — never you |
-| `/runtime/*` | The rotating vended GitHub token                                                 | Any cross-repo consumer (`infra-local-read`)                       |
+| Path         | Holds                                                                                       | Who can read it                                                    |
+| ------------ | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| `/infra/*`   | Crown jewels — the App private key, admin PAT, state passphrase, R2 creds, Cloudflare token | `infra`'s CI roles and its prompt-gated local identity — never you |
+| `/runtime/*` | The rotating vended GitHub token                                                            | Any cross-repo consumer (`infra-local-read`)                       |
 
 Don't ask for another repo's secret to land under `/infra/*` because it's
 convenient — that tier is deliberately unreachable from any local/agent

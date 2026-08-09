@@ -14,6 +14,7 @@ locals {
   # Parameter name under /infra/ → description — kebab-cased versions of
   # the env names their consumers export (docs/BOOTSTRAP.md §4).
   infra_parameters = {
+    "gh-admin-token"          = "GitHub fine-grained admin PAT (#150's spec, ADR-0013) — just tofu-apply + branch-protection bootstrap"
     "gh-app-private-key"      = "GitHub App private key .pem (ADR-0004/0005) — CI token minting"
     "cloudflare-api-token"    = "Cloudflare API bearer token, edit-scoped (#7) — the cloudflare provider (apply/dispatch, local)"
     "cloudflare-api-token-ro" = "Cloudflare API bearer token, read-only (#144) — the cloudflare provider (plan/drift)"
@@ -24,6 +25,14 @@ locals {
     "r2-apply-access-key-id"  = "R2 Object Read & Write S3 access key id (apply)"
     "r2-apply-storage-token"  = "R2 Object Read & Write token — consumers sha256 it into the S3 secret (ADR-0002)"
   }
+}
+
+# Temporary (delete once applied, README's adopting precedent): the
+# gh-admin-token parameter was hand-created ahead of this config (#152),
+# so adopt it instead of failing on ParameterAlreadyExists.
+import {
+  to = aws_ssm_parameter.this["gh-admin-token"]
+  id = "/infra/gh-admin-token"
 }
 
 resource "aws_ssm_parameter" "this" {

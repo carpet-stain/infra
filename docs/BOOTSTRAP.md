@@ -159,12 +159,17 @@ end is the account's first non-root credential.
 
 ## 4. Hand-populate the SSM parameters
 
-Before any tofu: create the nine `/infra/*` parameters with the bootstrap
+Before any tofu: create the ten `/infra/*` parameters with the bootstrap
 key — the wrapper (`scripts/with-infra-secrets.sh`) reads four of them for
 every local run, including the very first `just tofu-iam init`. The values
 you have now come from §1; the three that don't exist yet
 (`gh-app-private-key` and the two `cloudflare-api-token*`) get the
-literal `PLACEHOLDER` and are populated in §7-§9. This is the
+literal `PLACEHOLDER` and are populated in §7-§9. `gh-admin-token` is the
+fine-grained admin PAT (Administration/Issues/Variables read-write, all
+repos — ADR-0013's spec); mint it at github.com → Settings → Developer
+settings → Fine-grained tokens before this step, and note the 1-year
+expiry: set a rotation reminder, since the failure mode is a 401
+mid-apply. This is the
 highest-risk manual step: a placeholder silently read
 as the state passphrase fails state decryption, not loud (the wrapper and
 CI both guard against the literal `PLACEHOLDER`, nothing can guard against
@@ -178,7 +183,7 @@ export AWS_ACCESS_KEY_ID=<the item's acct attribute> AWS_REGION=us-east-1
 
 tmp="$(mktemp)"
 trap 'rm -f "$tmp"' EXIT
-for param in gh-app-private-key cloudflare-api-token \
+for param in gh-admin-token gh-app-private-key cloudflare-api-token \
   cloudflare-api-token-ro tf-state-passphrase \
   r2-account-id r2-plan-access-key-id r2-plan-storage-token \
   r2-apply-access-key-id r2-apply-storage-token; do
