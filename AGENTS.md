@@ -58,7 +58,8 @@ verbatim.
   shells (#51/ADR-0008 for the vending model, #124/ADR-0010 for the store).
 - `docs/adr/` — architecture decisions (`.adr-dir` points here).
 - `scripts/` — `with-infra-secrets.sh` (the Keychain-gated SSM fetch every
-  local tofu run rides), `new-adr.sh`, `check-envrc-local-example.sh`.
+  local tofu run rides), `new-adr.sh`, `check-envrc-local-example.sh`,
+  `check-workflow-secrets.sh` (ADR-0011's Secrets guard).
 - `justfile` / `lefthook*.yml` — base-owned composition root; a language overlay
   adds verbs/jobs in `*.lang` / `*-lang.yml`, never edits the base.
 
@@ -248,8 +249,9 @@ via `workflow_dispatch`) to resume.
 > Realizes ADR-0010 on top of ADR-0003's saved-plan model: CI holds **no
 > native GitHub secret at all** — each workflow assumes its OIDC role per
 > job and fetches secret values from SSM at runtime (`read-ssm-params`;
-> vend reads its one parameter inline). #143 tracks enforcing this as a CI
-> guard.
+> vend reads its one parameter inline). Enforced by the `workflow-secrets`
+> lefthook job (`scripts/check-workflow-secrets.sh`, #143): any
+> `secrets.<name>` reference beyond `GITHUB_TOKEN` fails lint. See ADR-0011.
 
 - Fetched from SSM: `TF_STATE_PASSPHRASE`, `R2_ACCOUNT_ID`, the R2 pair
   (plan/drift read `R2_PLAN_*` — a separate **Object Read only** token;
@@ -323,7 +325,7 @@ reads `secrets.*` anymore.
 
 - `just lint` — the full local pre-commit union: actionlint, markdownlint,
   prettier, yamlfmt, gitleaks, shfmt, shellcheck, justfile-format,
-  editorconfig-checker, envrc-sync, comment-concision, plus the OpenTofu
+  editorconfig-checker, envrc-sync, comment-concision, workflow-secrets, plus the OpenTofu
   `lang` slice (`tofu fmt -check`, `tflint`, `trivy config`). Scope to one
   slice with `just lint --tag base` or `--tag lang` — the exact slices
   `lint.yml` and `tofu.yml` run in CI.
