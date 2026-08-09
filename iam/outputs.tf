@@ -16,3 +16,8 @@ output "vend_role_arn" {
   value       = aws_iam_role.vend_write.arn
   description = "Seed as vars.AWS_VEND_ROLE_ARN when #124 rewrites vend-token.yml."
 }
+
+output "pst_e2e_read_role_arn" {
+  value       = aws_iam_role.pst_e2e_read.arn
+  description = "Seed as vars.AWS_VEND_READ_ROLE_ARN on project-starter-template — its e2e-*.yml workflows (#147)."
+}
