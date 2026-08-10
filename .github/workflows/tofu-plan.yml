@@ -137,13 +137,19 @@ jobs:
             method   = method.aes_gcm.state
             enforced = true
           }'
-          # R2 credentials as explicit backend config, not AWS_* env — the
-          # aws provider owns those names now (OIDC step above), and
-          # explicit backend config outranks the env chain, so the two
-          # credential sets never collide.
-          tofu init -input=false \
-            -backend-config="access_key=${R2_PLAN_ACCESS_KEY_ID}" \
-            -backend-config="secret_key=${r2_secret_key}"
+          # R2 credentials ride a runner-local AWS profile, not raw
+          # -backend-config keys and not AWS_* env (the aws provider owns
+          # those names — OIDC step above). Raw keys here get embedded
+          # verbatim in the saved plan's backend config, and
+          # `tofu apply <planfile>` uses the PLAN's embedded credentials
+          # for the state write — so this job's read-only pair 403'd
+          # every merge apply until #164 (reproduced locally both ways).
+          # A profile name embeds harmlessly: the apply job resolves it
+          # against its own runner's file, holding its own tier's pair.
+          printf '[r2-backend]\naws_access_key_id = %s\naws_secret_access_key = %s\n' \
+            "$R2_PLAN_ACCESS_KEY_ID" "$r2_secret_key" >"$RUNNER_TEMP/r2-credentials"
+          export AWS_SHARED_CREDENTIALS_FILE="$RUNNER_TEMP/r2-credentials"
+          tofu init -input=false -backend-config="profile=r2-backend"
           # -lock=false: this job's R2 credential is read-only by design
           # (#24's acceptance criterion), so it can't acquire the S3
           # backend's write-based lock at all — and doesn't need to, since a

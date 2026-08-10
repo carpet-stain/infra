@@ -116,11 +116,13 @@ jobs:
             method   = method.aes_gcm.state
             enforced = true
           }'
-          # R2 credentials as explicit backend config, not AWS_* env — the
-          # aws provider owns those names now (OIDC step above).
-          tofu init -input=false \
-            -backend-config="access_key=${R2_PLAN_ACCESS_KEY_ID}" \
-            -backend-config="secret_key=${r2_secret_key}"
+          # R2 credentials via the r2-backend profile (#164; why on
+          # tofu-plan.yml's init comment). This plan's artifact is never
+          # applied, but one shape everywhere beats a special case.
+          printf '[r2-backend]\naws_access_key_id = %s\naws_secret_access_key = %s\n' \
+            "$R2_PLAN_ACCESS_KEY_ID" "$r2_secret_key" >"$RUNNER_TEMP/r2-credentials"
+          export AWS_SHARED_CREDENTIALS_FILE="$RUNNER_TEMP/r2-credentials"
+          tofu init -input=false -backend-config="profile=r2-backend"
           # -lock=false: same reasoning as tofu-plan.yml — this R2
           # credential is read-only, can't take the write-based lock, and
           # doesn't need to since this never writes state.
