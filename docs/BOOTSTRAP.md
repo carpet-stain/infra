@@ -365,6 +365,13 @@ tooling gaps:
   key + Keychain item. "Bootstrap key still deactivated, still needed"
   joins the periodic audit alongside the containment invariant
   (`iam/main.tf`'s header, ADR-0010 as amended by #126).
+- The elevated Keychain items' read prompt — the fence the containment
+  invariant rests on, and one "Always Allow" click (or a confirm setting
+  that skips the keychain password) disables it silently: found live in
+  that state on 2026-08-09, open for an unknown period (#167).
+  `audit-keychain-gate` (deployed by dotfiles, which owns this machine's
+  Keychain state) verifies both items still require the password with an
+  empty app allow-list — the same periodic audit as the bullet above.
 
 See AGENTS.md's Credentials section for the day-to-day version of this
 list, and ADR-0004/ADR-0005 for the full reasoning behind the model.
