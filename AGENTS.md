@@ -185,7 +185,10 @@ since an automated unlock defeats the lock's purpose.
   (`vars.AWS_PLAN_ROLE_ARN` / `vars.AWS_APPLY_ROLE_ARN` /
   `vars.AWS_VEND_ROLE_ARN`) per job, creds ride the env chain (never Tofu
   variables — a saved-plan apply would replay them stale), and the R2
-  backend creds ride `-backend-config` flags instead of env there.
+  backend creds ride a runner-local `r2-backend` AWS profile referenced
+  via `-backend-config` — never raw keys there, which embed in the saved
+  plan and put the plan job's read-only pair on the merge apply's state
+  write (#164).
 - Elevate explicitly only for the one action that needs admin:
   `scripts/with-infra-secrets.sh --gh-admin env -u GH_TOKEN <cmd>` fetches the
   fine-grained admin PAT from `/infra/gh-admin-token` behind the same Keychain

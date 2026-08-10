@@ -155,11 +155,16 @@ jobs:
             method   = method.aes_gcm.state
             enforced = true
           }'
-          # R2 credentials as explicit backend config, not AWS_* env — the
-          # aws provider owns those names now (OIDC step above).
-          tofu init -input=false \
-            -backend-config="access_key=${R2_APPLY_ACCESS_KEY_ID}" \
-            -backend-config="secret_key=${r2_secret_key}"
+          # R2 credentials via the r2-backend profile, not raw
+          # -backend-config keys (#164) — the saved plan embeds the plan
+          # job's backend config, and apply uses the plan's embedded
+          # credentials, so only a runtime-resolved profile name puts
+          # THIS job's read-write pair on the state write. Why lives on
+          # tofu-plan.yml's init comment.
+          printf '[r2-backend]\naws_access_key_id = %s\naws_secret_access_key = %s\n' \
+            "$R2_APPLY_ACCESS_KEY_ID" "$r2_secret_key" >"$RUNNER_TEMP/r2-credentials"
+          export AWS_SHARED_CREDENTIALS_FILE="$RUNNER_TEMP/r2-credentials"
+          tofu init -input=false -backend-config="profile=r2-backend"
           # Applies the exact downloaded plan, not a fresh one — the whole
           # point of the saved-plan-on-merge model (ADR-0003). Normal
           # locking (no -lock=false, unlike the plan job): this writes

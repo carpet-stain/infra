@@ -62,8 +62,9 @@ provider "cloudflare" {}
 #    configure-aws-credentials. Never Tofu variables: a saved-plan apply
 #    (ADR-0003) replays variable values baked at plan time, which would
 #    resurrect the plan job's expired read-only creds at apply. The R2
-#    backend cedes the AWS_* env names to this (its creds move to
-#    -backend-config flags in the workflows).
+#    backend cedes the AWS_* env names to this (its creds ride the
+#    runner-local r2-backend profile — see tofu-plan.yml's init comment
+#    and #164 for why raw keys must stay out of -backend-config).
 #  - Local: explicit vars from the Keychain-fetched infra-local-apply key
 #    (with-infra-secrets.sh; ADR-0010's #126 amendment) — explicit config
 #    outranks env, which locally still carries the R2 backend credentials.
