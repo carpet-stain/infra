@@ -6,6 +6,10 @@
 # local/agent shell holds resolves kms:Decrypt on alias/infra-secrets —
 # infra-local-apply's key exists but is Keychain-prompt-gated, a
 # human-in-the-loop read — and local and CI identities share no grant.
+# The prompt is a precondition, not a given — one "Always Allow" click
+# disables it silently (#167); `audit-keychain-gate` (dotfiles-deployed,
+# machine-local) checks it stays enforced, part of the periodic audit
+# (docs/BOOTSTRAP.md).
 
 data "aws_caller_identity" "this" {}
 

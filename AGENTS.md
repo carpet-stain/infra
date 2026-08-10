@@ -249,7 +249,10 @@ two independent fences. The audit invariant (ADR-0010 as amended by #126):
 Parameter existence/metadata is tofu-managed (`ssm.tf`); values are
 hand-populated and `ignore_changes`-ignored. Periodic audit items: the
 bootstrap key still deactivated and still needed; `infra-vend-write`'s
-unattended crown-jewel read; the invariant above.
+unattended crown-jewel read; the invariant above; the elevated Keychain
+items still prompting on every read (`audit-keychain-gate`, dotfiles-
+deployed since the items are machine state, #167 — the gate was found
+silently disabled once).
 
 **If vending stops:** scheduled workflows auto-disable after 60 days of repo
 inactivity. Local shells then loud-fail on a stale token — the designed
