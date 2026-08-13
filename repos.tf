@@ -6,6 +6,27 @@
 
 locals {
   repos = {
+    agents = {
+      # Stood up empty and governed (dotfiles#563 spike; #177) — content
+      # lands via dotfiles' extraction PRs. auto_init seeds the README-stub
+      # initial commit at creation, before the ruleset resource applies, so
+      # main exists protected with no unprotected window; an empty repo's
+      # first push would otherwise be blocked forever by protect-main.
+      description           = "Shared AI-agent definitions — personas, universal rules, skills, the memory contract. Provider-neutral markdown, consumed per-project"
+      visibility            = "public"
+      auto_init             = true
+      has_issues            = true
+      has_projects          = false
+      has_wiki              = false
+      has_discussions       = false
+      allow_auto_merge      = true
+      extra_required_checks = []
+      topics = [
+        "ai-agents",
+        "agent-definitions",
+      ]
+    }
+
     deal-finder = {
       description           = "Marketplace-monitoring for secondhand PC parts: polls sources, filters against an in-progress build's needs, LLM-judges fit/price, notifies (never transacts)"
       visibility            = "public"

@@ -20,6 +20,10 @@ resource "github_repository" "this" {
   has_discussions  = each.value.has_discussions
   allow_auto_merge = each.value.allow_auto_merge
 
+  # Create-time only — see the agents entry for why a new repo needs it.
+  # Defaults to null, not false, so entries without the key stay diff-free.
+  auto_init = lookup(each.value, "auto_init", null)
+
   # Rebase-merge-only discipline: invariant for every managed repo, so
   # fixed here rather than per-repo data.
   allow_merge_commit     = false
