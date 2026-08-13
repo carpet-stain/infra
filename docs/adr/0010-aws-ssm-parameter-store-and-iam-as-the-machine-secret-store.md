@@ -8,6 +8,10 @@ Accepted
 
 Supersedes ADR-0008, ADR-0009.
 
+Audit-invariant clause amended in place — #126 (the local elevated
+identity) and #155/ADR-0015 (the console-admin escalation class); see the
+Amendment sections at the end.
+
 ## Context
 
 ADR-0008 spent the entire free-tier Machine Account budget (three, hard cap)
@@ -360,3 +364,28 @@ copies of the four backend values directly in the Keychain (two homes per
 value, rotation drift, and the SecureString refresh still needs _some_
 AWS credential); reactivating the bootstrap key per local run (routinely
 exercises a key holding `iam:*`/`kms:*`, the exact habit step 7 forbids).
+
+## Amendment — #155 (2026-08-13): the console admin, an escalation class
+
+`infra-console-admin` (ADR-0015) joins the account: a console-only
+`Allow *:*` IAM user so daily console work stops running as root. It
+cannot be folded into the invariant above — it resolves everything,
+including `kms:Decrypt` on `alias/infra-secrets`, silently per read once
+MFA'd — so **the audit invariant is restated as two fences**:
+
+- **(a) Steady-state read-reachability** — the invariant as amended by
+  #126, now explicitly over the non-escalation set (`infra-local-*`, the
+  CI roles, `infra-vend-write`'s one-ARN carve-out): no
+  _silently-readable_ key-holding identity resolves `kms:Decrypt` on
+  `alias/infra-secrets`, and local and CI identities share no grant.
+  `infra-local-apply` still resolves the key, never silently (per-read
+  Keychain prompt).
+- **(b) Escalation class** — `infra-bootstrap` and `infra-console-admin`
+  reach anything by construction; their fence is human ceremony (MFA
+  console session, no programmatic key, deactivation/discipline), not
+  the path/key boundary. Audited as its own item: root and the console
+  password/MFA stay in the Bitwarden human vault, the user keeps no
+  access key (self-`CreateAccessKey` denied as defense-in-depth), root
+  stays break-glass-only.
+
+Reasoning, policy mechanics, and rejected alternatives: ADR-0015.

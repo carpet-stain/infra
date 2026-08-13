@@ -214,7 +214,8 @@ verify each with a decrypting read
 
 The trust roots as code (`iam/`, ADR-0010): the GitHub OIDC provider, the
 CI roles (`infra-plan-read`, `infra-apply`, `infra-vend-write`), the local
-users (`infra-local-apply`, `infra-local-read`), and the two tier keys
+users (`infra-local-apply`, `infra-local-read`), the console admin
+(`infra-console-admin`, ADR-0015), and the two tier keys
 (`alias/infra-secrets`, `alias/runtime-secrets`).
 
 - **Apply the bootstrap module** (Keychain prompt: `infra-aws-bootstrap`):
@@ -227,9 +228,24 @@ users (`infra-local-apply`, `infra-local-read`), and the two tier keys
 - **Re-run §4's loop** now that `alias/infra-secrets` exists (see the
   chicken-and-egg note there), and verify one decrypting read of each.
 
-- **Create the two local users' access keys** (console, as root: IAM →
-  Users → the user → Security credentials → Create access key, use case
-  CLI) and store them:
+- **Enroll the console admin** (as root — the last routine root task):
+  IAM → Users → `infra-console-admin` → Security credentials → Enable
+  console access (autogenerate, require password reset). Sign in as the
+  user, change the password, then register a virtual MFA device.
+  **⚠ Name the device exactly `infra-console-admin`** — the console's
+  default, but if renamed the policy's `mfa/${aws:username}` scope denies
+  the enable and locks enrollment out to root. If an enrollment is
+  abandoned mid-way, the retry can delete the orphaned device itself (the
+  policy allows self-`DeleteVirtualMFADevice`); a _lost_ enrolled device
+  is root break-glass by design. Password + MFA recovery codes go in the
+  Bitwarden human vault (ADR-0010's human-credential scope) — nothing in
+  SSM or state. **From here, root is break-glass-only**: billing,
+  close-account, and root-only IAM tasks; everything else in the console
+  runs as `infra-console-admin`.
+
+- **Create the two local users' access keys** (console, as the admin
+  user: IAM → Users → the user → Security credentials → Create access
+  key, use case CLI) and store them:
 
   ```sh
   # elevated: crown-jewel read/write, so NO -A — every read prompts
@@ -361,10 +377,12 @@ tooling gaps:
 - Every SSM parameter _value_ — hand-populated (§4), `ignore_changes`d;
   tofu manages existence and metadata only (ADR-0010).
 - The AWS account scaffolding — account creation, root MFA, the
-  zero-spend budget, the bootstrap IAM user, and every IAM user's access
+  zero-spend budget, the bootstrap IAM user, the console admin's login
+  profile + MFA device (§5, ADR-0015), and every IAM user's access
   key + Keychain item. "Bootstrap key still deactivated, still needed"
-  joins the periodic audit alongside the containment invariant
-  (`iam/main.tf`'s header, ADR-0010 as amended by #126).
+  and "root still break-glass-only" join the periodic audit alongside
+  the two containment fences (`iam/main.tf`'s header, ADR-0010 as
+  amended by #126 and #155).
 - The elevated Keychain items' read prompt — the fence the containment
   invariant rests on, and one "Always Allow" click (or a confirm setting
   that skips the keychain password) disables it silently: found live in
