@@ -236,20 +236,28 @@ two independent fences. The audit invariant (ADR-0010 as amended by #126):
 **no silently-readable local identity resolves `kms:Decrypt` on
 `alias/infra-secrets`**, and local and CI identities share no credential.
 
-| Identity                            | Kind      | Surface                          | Held as                                                     |
-| ----------------------------------- | --------- | -------------------------------- | ----------------------------------------------------------- |
-| `infra-plan-read`                   | OIDC role | `/infra/*` read                  | no credential — assumed per job (plan/drift)                |
-| `infra-apply`                       | OIDC role | `/infra/*` read/write            | no credential — assumed per job (apply/dispatch)            |
-| `infra-vend-write`                  | OIDC role | App-key read, vended-token write | no credential — assumed per job (vend)                      |
-| `infra-local-apply`                 | IAM user  | `/infra/*` read/write            | Keychain `infra-aws-local-apply`, prompt-gated (no `-A`)    |
-| `infra-local-read`                  | IAM user  | `/runtime/*` read                | Keychain (dotfiles' `infra-aws-local-read`), silent (`-A`)  |
-| `infra-bootstrap`                   | IAM user  | IAM/KMS/SSM trust roots          | Keychain `infra-aws-bootstrap`, prompt-gated, deactivated   |
-| `project-starter-template-e2e-read` | OIDC role | vended-token read (single param) | no credential — assumed per job, cross-repo consumer (#147) |
+| Identity                            | Kind      | Surface                          | Held as                                                                  |
+| ----------------------------------- | --------- | -------------------------------- | ------------------------------------------------------------------------ |
+| `infra-plan-read`                   | OIDC role | `/infra/*` read                  | no credential — assumed per job (plan/drift)                             |
+| `infra-apply`                       | OIDC role | `/infra/*` read/write            | no credential — assumed per job (apply/dispatch)                         |
+| `infra-vend-write`                  | OIDC role | App-key read, vended-token write | no credential — assumed per job (vend)                                   |
+| `infra-local-apply`                 | IAM user  | `/infra/*` read/write            | Keychain `infra-aws-local-apply`, prompt-gated (no `-A`)                 |
+| `infra-local-read`                  | IAM user  | `/runtime/*` read                | Keychain (dotfiles' `infra-aws-local-read`), silent (`-A`)               |
+| `infra-bootstrap`                   | IAM user  | IAM/KMS/SSM trust roots          | Keychain `infra-aws-bootstrap`, prompt-gated, deactivated                |
+| `infra-console-admin`               | IAM user  | console `*:*`, MFA-enforced      | no access key — console password + MFA, Bitwarden human vault (ADR-0015) |
+| `project-starter-template-e2e-read` | OIDC role | vended-token read (single param) | no credential — assumed per job, cross-repo consumer (#147)              |
+
+Daily console work runs as `infra-console-admin` (console-only `*:*`
+admin, MFA enforced by policy, no programmatic key — ADR-0015); root is
+break-glass-only (billing, close-account, root-only IAM). It sits in the
+escalation class with `infra-bootstrap` — fenced by human ceremony, not
+the path/key boundary (`iam/main.tf`'s header fence (b)).
 
 Parameter existence/metadata is tofu-managed (`ssm.tf`); values are
 hand-populated and `ignore_changes`-ignored. Periodic audit items: the
 bootstrap key still deactivated and still needed; `infra-vend-write`'s
-unattended crown-jewel read; the invariant above; the elevated Keychain
+unattended crown-jewel read; the two fences above; root still
+break-glass-only; the elevated Keychain
 items still prompting on every read (`audit-keychain-gate`, dotfiles-
 deployed since the items are machine state, #167 — the gate was found
 silently disabled once).

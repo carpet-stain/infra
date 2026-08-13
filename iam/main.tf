@@ -1,15 +1,25 @@
 # ADR-0010's role×path matrix, as code. Path is the access boundary
 # (/infra/* crown jewels, /runtime/* rotating tier) and every role needs
 # both the SSM path grant AND kms:Decrypt on that tier's key — two
-# independent fences, so one misconfigured policy can't cross tiers. The
-# audit invariant (as amended by #126): no *silently-readable* identity a
-# local/agent shell holds resolves kms:Decrypt on alias/infra-secrets —
-# infra-local-apply's key exists but is Keychain-prompt-gated, a
-# human-in-the-loop read — and local and CI identities share no grant.
-# The prompt is a precondition, not a given — one "Always Allow" click
-# disables it silently (#167); `audit-keychain-gate` (dotfiles-deployed,
-# machine-local) checks it stays enforced, part of the periodic audit
-# (docs/BOOTSTRAP.md).
+# independent fences, so one misconfigured policy can't cross tiers.
+# Two audit fences over two identity classes (ADR-0010 as amended by
+# #126 and #155; reasoning in ADR-0015):
+# (a) Steady-state read-reachability, over the non-escalation set
+#     (infra-local-*, the CI roles, infra-vend-write's one-ARN
+#     carve-out): no *silently-readable* key-holding identity resolves
+#     kms:Decrypt on alias/infra-secrets — infra-local-apply's key
+#     exists but is Keychain-prompt-gated, a human-in-the-loop read —
+#     and local and CI identities share no grant. The prompt is a
+#     precondition, not a given — one "Always Allow" click disables it
+#     silently (#167); `audit-keychain-gate` (dotfiles-deployed,
+#     machine-local) checks it stays enforced, part of the periodic
+#     audit (docs/BOOTSTRAP.md).
+# (b) Escalation class — infra-bootstrap and infra-console-admin reach
+#     anything by construction; their fence is human ceremony (MFA
+#     console session, no programmatic key, deactivation/discipline),
+#     not the path/key boundary. The console admin's post-MFA reads are
+#     silent per read — weaker than infra-local-apply's per-read
+#     prompt — so it is deliberately NOT folded into (a)'s carve-out.
 
 data "aws_caller_identity" "this" {}
 
@@ -356,6 +366,95 @@ resource "aws_iam_user_policy" "local_apply" {
   policy = jsonencode({
     Version   = "2012-10-17"
     Statement = concat(local.infra_read_statements, local.infra_write_statements)
+  })
+}
+
+# --- Console admin (escalation class) --------------------------------------
+
+# The daily-driver console identity (ADR-0015): root becomes
+# break-glass-only. Console-only *:* admin — no access key (self-key
+# creation denied in the policy; login profile and MFA device are
+# enrolled by hand, never in state, docs/BOOTSTRAP.md §5), MFA enforced
+# by policy: pre-MFA the user can only enroll. Inline policy + untagged
+# because infra-bootstrap holds neither iam:AttachUserPolicy nor
+# iam:TagUser. Fenced by header fence (b), not the path/key boundary.
+#trivy:ignore:AVD-AWS-0143
+resource "aws_iam_user" "console_admin" {
+  name = "infra-console-admin"
+}
+
+resource "aws_iam_user_policy" "console_admin" {
+  name = "console-admin"
+  user = aws_iam_user.console_admin.name
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid      = "AdminEverything"
+        Effect   = "Allow"
+        Action   = "*"
+        Resource = "*"
+      },
+      {
+        # Defense-in-depth against the casual self-key click, not
+        # containment — an *:* identity can escalate anyway (ADR-0015).
+        Sid      = "DenySelfAccessKey"
+        Effect   = "Deny"
+        Action   = "iam:CreateAccessKey"
+        Resource = "arn:aws:iam::${data.aws_caller_identity.this.account_id}:user/$${aws:username}"
+      },
+      {
+        # These two support no resource scoping — account-level reads.
+        Sid      = "AllowEnrollmentAccountReads"
+        Effect   = "Allow"
+        Action   = ["iam:GetAccountPasswordPolicy", "iam:ListVirtualMFADevices"]
+        Resource = "*"
+      },
+      {
+        # DeleteVirtualMFADevice covers the abandon-then-retry path (an
+        # orphaned unassigned device otherwise EntityAlreadyExists-locks
+        # enrollment); DeactivateMFADevice is deliberately absent —
+        # device-loss recovery is a root break-glass path (ADR-0015).
+        Sid    = "AllowSelfEnrollment"
+        Effect = "Allow"
+        Action = [
+          "iam:ChangePassword",
+          "iam:GetUser",
+          "iam:ListMFADevices",
+          "iam:CreateVirtualMFADevice",
+          "iam:EnableMFADevice",
+          "iam:ResyncMFADevice",
+          "iam:DeleteVirtualMFADevice",
+        ]
+        Resource = [
+          "arn:aws:iam::${data.aws_caller_identity.this.account_id}:user/$${aws:username}",
+          "arn:aws:iam::${data.aws_caller_identity.this.account_id}:mfa/$${aws:username}",
+        ]
+      },
+      {
+        # Resource:* is load-bearing — narrower would let reads on other
+        # ARNs escape the deny. NotAction = the enrollment set above.
+        Sid    = "DenyAllButEnrollmentPreMfa"
+        Effect = "Deny"
+        NotAction = [
+          "iam:ChangePassword",
+          "iam:GetAccountPasswordPolicy",
+          "iam:GetUser",
+          "iam:ListMFADevices",
+          "iam:ListVirtualMFADevices",
+          "iam:CreateVirtualMFADevice",
+          "iam:EnableMFADevice",
+          "iam:ResyncMFADevice",
+          "iam:DeleteVirtualMFADevice",
+        ]
+        Resource = "*"
+        Condition = {
+          BoolIfExists = {
+            "aws:MultiFactorAuthPresent" = "false"
+          }
+        }
+      },
+    ]
   })
 }
 
