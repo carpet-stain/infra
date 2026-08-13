@@ -27,9 +27,9 @@ hand — this isn't tofu-managed yet (tracked as a known gap, see AGENTS.md):
   `GET /user/tokens/verify`); the S3 secret is derived from the token
   value by the consumers (`sha256`, ADR-0002) — record the raw values,
   they go into SSM in §4.
-- A state encryption passphrase: `openssl rand -hex 32`, saved in a
-  password manager. Losing it means every resource has to be re-imported,
-  not recovered.
+- A state encryption passphrase: `openssl rand -hex 32`, with a backup
+  copy in the Bitwarden vault (ADR-0016 — the primary lands in SSM, §4).
+  Losing it means every resource has to be re-imported, not recovered.
 
 Clone this repo (or start a fresh one from it), copy
 `.envrc.local.example` to `.envrc.local` and fill it (the backend values
@@ -63,9 +63,9 @@ The machine-secret store's trust roots (ADR-0010). Everything here runs as
 the **root user in the console** — the bootstrap IAM user created at the
 end is the account's first non-root credential.
 
-- **Create the account**; root email and password go in the
-  password-manager vault — human credentials, outside ADR-0010's
-  machine-store scope. Enroll **hardware MFA** on root (IAM dashboard →
+- **Create the account**; root email and password go in iCloud
+  Passwords (the login triad, ADR-0016) — human credentials, outside
+  ADR-0010's machine-store scope. Enroll **hardware MFA** on root (IAM dashboard →
   root user → Security credentials → Assign MFA device). Never create a
   root access key — the bootstrap user below is the CLI credential.
 - **Billing alarm**: Billing and Cost Management → Budgets → Create
@@ -237,8 +237,8 @@ users (`infra-local-apply`, `infra-local-read`), the console admin
   the enable and locks enrollment out to root. If an enrollment is
   abandoned mid-way, the retry can delete the orphaned device itself (the
   policy allows self-`DeleteVirtualMFADevice`); a _lost_ enrolled device
-  is root break-glass by design. Password + MFA recovery codes go in the
-  Bitwarden human vault (ADR-0010's human-credential scope) — nothing in
+  is root break-glass by design. Password + OTP go in iCloud Passwords;
+  the MFA-recovery codes in the Bitwarden vault (ADR-0016) — nothing in
   SSM or state. **From here, root is break-glass-only**: billing,
   close-account, and root-only IAM tasks; everything else in the console
   runs as `infra-console-admin`.

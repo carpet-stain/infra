@@ -154,6 +154,9 @@ since an automated unlock defeats the lock's purpose.
 > Concrete realization of **git.md** (credential scope) and **github.md**
 > (scoped PAT, explicit elevation) for this repo. See `.envrc.local.example`.
 
+Where does a secret go → ADR-0016's decision tree (SSM / iCloud /
+Bitwarden vault / Keychain).
+
 - Routine work uses the **fine-grained dev PAT** (Contents / Pull requests /
   Actions / Issues read-write, **not** Administration) — gh's default
   keyring credential (#151), user-global, so the ambient posture in every
@@ -236,16 +239,16 @@ two independent fences. The audit invariant (ADR-0010 as amended by #126):
 **no silently-readable local identity resolves `kms:Decrypt` on
 `alias/infra-secrets`**, and local and CI identities share no credential.
 
-| Identity                            | Kind      | Surface                          | Held as                                                                  |
-| ----------------------------------- | --------- | -------------------------------- | ------------------------------------------------------------------------ |
-| `infra-plan-read`                   | OIDC role | `/infra/*` read                  | no credential — assumed per job (plan/drift)                             |
-| `infra-apply`                       | OIDC role | `/infra/*` read/write            | no credential — assumed per job (apply/dispatch)                         |
-| `infra-vend-write`                  | OIDC role | App-key read, vended-token write | no credential — assumed per job (vend)                                   |
-| `infra-local-apply`                 | IAM user  | `/infra/*` read/write            | Keychain `infra-aws-local-apply`, prompt-gated (no `-A`)                 |
-| `infra-local-read`                  | IAM user  | `/runtime/*` read                | Keychain (dotfiles' `infra-aws-local-read`), silent (`-A`)               |
-| `infra-bootstrap`                   | IAM user  | IAM/KMS/SSM trust roots          | Keychain `infra-aws-bootstrap`, prompt-gated, deactivated                |
-| `infra-console-admin`               | IAM user  | console `*:*`, MFA-enforced      | no access key — console password + MFA, Bitwarden human vault (ADR-0015) |
-| `project-starter-template-e2e-read` | OIDC role | vended-token read (single param) | no credential — assumed per job, cross-repo consumer (#147)              |
+| Identity                            | Kind      | Surface                          | Held as                                                                                       |
+| ----------------------------------- | --------- | -------------------------------- | --------------------------------------------------------------------------------------------- |
+| `infra-plan-read`                   | OIDC role | `/infra/*` read                  | no credential — assumed per job (plan/drift)                                                  |
+| `infra-apply`                       | OIDC role | `/infra/*` read/write            | no credential — assumed per job (apply/dispatch)                                              |
+| `infra-vend-write`                  | OIDC role | App-key read, vended-token write | no credential — assumed per job (vend)                                                        |
+| `infra-local-apply`                 | IAM user  | `/infra/*` read/write            | Keychain `infra-aws-local-apply`, prompt-gated (no `-A`)                                      |
+| `infra-local-read`                  | IAM user  | `/runtime/*` read                | Keychain (dotfiles' `infra-aws-local-read`), silent (`-A`)                                    |
+| `infra-bootstrap`                   | IAM user  | IAM/KMS/SSM trust roots          | Keychain `infra-aws-bootstrap`, prompt-gated, deactivated                                     |
+| `infra-console-admin`               | IAM user  | console `*:*`, MFA-enforced      | no access key — console password + MFA in iCloud, recovery codes in Bitwarden (ADR-0015/0016) |
+| `project-starter-template-e2e-read` | OIDC role | vended-token read (single param) | no credential — assumed per job, cross-repo consumer (#147)                                   |
 
 Daily console work runs as `infra-console-admin` (console-only `*:*`
 admin, MFA enforced by policy, no programmatic key — ADR-0015); root is
