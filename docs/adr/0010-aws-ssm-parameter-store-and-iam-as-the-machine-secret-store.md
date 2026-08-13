@@ -12,6 +12,9 @@ Audit-invariant clause amended in place — #126 (the local elevated
 identity) and #155/ADR-0015 (the console-admin escalation class); see the
 Amendment sections at the end.
 
+Human-credential residency claim superseded by ADR-0016 (#170); the
+machine/human scope boundary stands — see the last Amendment section.
+
 ## Context
 
 ADR-0008 spent the entire free-tier Machine Account budget (three, hard cap)
@@ -389,3 +392,14 @@ MFA'd — so **the audit invariant is restated as two fences**:
   stays break-glass-only.
 
 Reasoning, policy mechanics, and rejected alternatives: ADR-0015.
+
+## Amendment — #170 (2026-08-13): human-credential residency → ADR-0016
+
+The Context's scope boundary bundles two claims. The **scope boundary**
+("this is the machine-secret store; human credentials are out of scope")
+stands — it's what authorizes a separate ADR to own the human side. The
+**residency claim** ("human credentials stay in the Bitwarden
+password-manager vault") is superseded by ADR-0016: human logins default
+to iCloud Passwords, the Bitwarden vault holds what exceeds the login
+triad, and the four-tier decision tree lives there. Nothing machine-side
+changes; this ADR's Status stays Accepted.
