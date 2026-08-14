@@ -57,6 +57,8 @@ jobs:
             /infra/r2-apply-storage-token
             /infra/r2-account-id
             /infra/cloudflare-api-token
+            /infra/b2-management-key-id
+            /infra/b2-management-key
 
       # Administration/Issues match tofu-apply.yml's merge-triggered job. No
       # permission-secrets: this job's fresh `tofu plan` used to refresh a
@@ -90,6 +92,10 @@ jobs:
           R2_APPLY_STORAGE_TOKEN: ${{ steps.ssm.outputs.R2_APPLY_STORAGE_TOKEN }}
           R2_ACCOUNT_ID: ${{ steps.ssm.outputs.R2_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ steps.ssm.outputs.CLOUDFLARE_API_TOKEN }}
+          # The b2 provider's native env names — the SSM leaf is
+          # b2-management-key*, remapped here (ADR-0017).
+          B2_APPLICATION_KEY_ID: ${{ steps.ssm.outputs.B2_MANAGEMENT_KEY_ID }}
+          B2_APPLICATION_KEY: ${{ steps.ssm.outputs.B2_MANAGEMENT_KEY }}
           TF_VAR_cloudflare_account_id: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           r2_secret_key="$(printf '%s' "$R2_APPLY_STORAGE_TOKEN" | shasum -a 256 | cut -d' ' -f1)"

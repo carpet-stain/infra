@@ -59,7 +59,8 @@ aws_secret="$(security find-generic-password -s "$item" -w)"
 # below, and the aws provider gets these same values as explicit TF_VARs
 # (the one slot that outranks the env chain).
 names=(/infra/tf-state-passphrase /infra/r2-apply-access-key-id
-  /infra/r2-apply-storage-token /infra/r2-account-id)
+  /infra/r2-apply-storage-token /infra/r2-account-id
+  /infra/b2-management-key-id /infra/b2-management-key)
 [[ -n $gh_admin ]] && names+=(/infra/gh-admin-token)
 params="$(AWS_ACCESS_KEY_ID="$aws_key_id" AWS_SECRET_ACCESS_KEY="$aws_secret" \
   AWS_REGION=us-east-1 aws ssm get-parameters --with-decryption --output json \
@@ -74,7 +75,9 @@ passphrase="$(val tf-state-passphrase)"
 r2_key="$(val r2-apply-access-key-id)"
 r2_token="$(val r2-apply-storage-token)"
 r2_account="$(val r2-account-id)"
-values=(passphrase r2_key r2_token r2_account)
+b2_key_id="$(val b2-management-key-id)"
+b2_key="$(val b2-management-key)"
+values=(passphrase r2_key r2_token r2_account b2_key_id b2_key)
 if [[ -n $gh_admin ]]; then
   gh_admin_token="$(val gh-admin-token)"
   values+=(gh_admin_token)
@@ -93,6 +96,11 @@ done
 
 export TF_VAR_aws_access_key_id="$aws_key_id"
 export TF_VAR_aws_secret_access_key="$aws_secret"
+
+# The b2 provider's native env names (ADR-0017) — the SSM leaf is
+# b2-management-key*, remapped here, same as CI's read-ssm-params remap.
+export B2_APPLICATION_KEY_ID="$b2_key_id"
+export B2_APPLICATION_KEY="$b2_key"
 
 # The github provider reads GITHUB_TOKEN (never GH_TOKEN), so the ambient
 # routine token stays untouched — gh-driving consumers (the bootstrap

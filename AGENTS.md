@@ -33,6 +33,9 @@ verbatim.
   token can refresh a `github_actions_variable` resource
   (`actions/create-github-app-token` has no permission for it at all).
 - `dns.tf` — Cloudflare zones and DNS records as config-as-data (#9).
+- `b2.tf` — the Backblaze B2 agent-memory backup bucket: versioned
+  substrate, one lifecycle rule as the only deletion path (ADR-0018;
+  the vendor and credential are ADR-0017).
 - `variables.tf` — apply-time inputs fed via `TF_VAR_*`, never a literal in
   a committed file (the aws provider's local key halves, the Cloudflare
   account id).
@@ -283,10 +286,12 @@ via `workflow_dispatch`) to resume.
 - Fetched from SSM: `TF_STATE_PASSPHRASE`, `R2_ACCOUNT_ID`, the R2 pair
   (plan/drift read `R2_PLAN_*` — a separate **Object Read only** token;
   apply and dispatch read the read/write `R2_APPLY_*`),
-  `GH_APP_PRIVATE_KEY`, and the Cloudflare token — split the same way
+  `GH_APP_PRIVATE_KEY`, the Cloudflare token — split the same way
   (#144): plan/drift read the read-only `cloudflare-api-token-ro`, apply
   and dispatch the edit-scoped `cloudflare-api-token` (#9, the same token
-  `dns.tf`'s provider reads locally). Apply and dispatch mint an elevated
+  `dns.tf`'s provider reads locally) — and the B2 management key, unsplit
+  (one key, all four workflows; ADR-0018 names the #144-style split as a
+  possible follow-up). Apply and dispatch mint an elevated
   App token from the key; the plan job mints an
   `administration:read`+`issues:read` token for the provider (the routine
   PAT is retired, #59) and posts its PR comment via the ephemeral

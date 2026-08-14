@@ -401,10 +401,12 @@ created here. Nothing consumes B2 until the agent-memory backup bucket
   ```
 
   `/infra/b2-management-key-id` + `/infra/b2-management-key`, both
-  `SecureString` under `alias/infra-secrets`. `ssm.tf` adopts them with
-  temporary `import` blocks (the repo convention); nothing fetches them
-  yet — the `b2` provider block is empty and lazy (`versions.tf`), and
-  the CI/wrapper wiring lands with #159's bucket.
+  `SecureString` under `alias/infra-secrets`, adopted by `ssm.tf`. The
+  four tofu workflows fetch them via `read-ssm-params` and
+  `with-infra-secrets.sh` exports them locally, both remapping to the
+  provider's native `B2_APPLICATION_KEY_ID`/`B2_APPLICATION_KEY` names
+  (#159's wiring; the `b2` provider block itself stays empty,
+  `versions.tf`).
 
 ## What's still manual, permanently
 

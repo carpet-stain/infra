@@ -59,14 +59,13 @@ provider "github" {
 # (R2_STORAGE_TOKEN, ADR-0002), which is R2's separate access-key flow.
 provider "cloudflare" {}
 
-# Backblaze B2, the versioned backup satellite (ADR-0017, #189): the
-# provider the agent-memory backup bucket (#159) will be managed through.
-# Auth is the B2 management key via B2_APPLICATION_KEY_ID /
-# B2_APPLICATION_KEY env vars — the provider reads them directly, so this
-# block stays empty. Auth is lazy, same as cloudflare's above: with no b2
-# resources yet this plans clean without the key, so neither CI nor the
-# local wrapper fetches /infra/b2-management-key* until #159 lands a
-# resource (that PR inherits the wiring — see #189's plan thread).
+# Backblaze B2, the versioned backup satellite (ADR-0017, #189): manages
+# the agent-memory backup bucket (b2.tf, #159/ADR-0018). Auth is the B2
+# management key via B2_APPLICATION_KEY_ID / B2_APPLICATION_KEY env vars —
+# the provider reads them directly, so this block stays empty. The values
+# come from /infra/b2-management-key* in SSM: CI via read-ssm-params
+# (remapped, the SSM leaf is b2-management-key*), local via
+# with-infra-secrets.sh — never ambient.
 provider "b2" {}
 
 # AWS SSM Parameter Store, the machine-secret store (ADR-0010, #121).

@@ -83,6 +83,8 @@ jobs:
             /infra/r2-account-id
             /infra/gh-app-private-key
             /infra/cloudflare-api-token-ro
+            /infra/b2-management-key-id
+            /infra/b2-management-key
 
       # The github provider's read credential: an App-minted token scoped to
       # read repo/label/ruleset state across the managed repos, replacing the
@@ -119,6 +121,10 @@ jobs:
           # The read-only Cloudflare token (#144) — a plan only refreshes;
           # the edit token stays confined to apply/dispatch.
           CLOUDFLARE_API_TOKEN: ${{ steps.ssm.outputs.CLOUDFLARE_API_TOKEN_RO }}
+          # The b2 provider's native env names — the SSM leaf is
+          # b2-management-key*, remapped here (ADR-0017).
+          B2_APPLICATION_KEY_ID: ${{ steps.ssm.outputs.B2_MANAGEMENT_KEY_ID }}
+          B2_APPLICATION_KEY: ${{ steps.ssm.outputs.B2_MANAGEMENT_KEY }}
         run: |
           r2_secret_key="$(printf '%s' "$R2_PLAN_STORAGE_TOKEN" | shasum -a 256 | cut -d' ' -f1)"
           export AWS_ENDPOINT_URL_S3="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"

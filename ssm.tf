@@ -29,18 +29,6 @@ locals {
   }
 }
 
-# Temporary adoption of the hand-created B2 params (docs/BOOTSTRAP.md §11)
-# — the repo's adopt-then-delete convention; remove once applied.
-import {
-  to = aws_ssm_parameter.this["b2-management-key-id"]
-  id = "/infra/b2-management-key-id"
-}
-
-import {
-  to = aws_ssm_parameter.this["b2-management-key"]
-  id = "/infra/b2-management-key"
-}
-
 resource "aws_ssm_parameter" "this" {
   for_each = local.infra_parameters
 
