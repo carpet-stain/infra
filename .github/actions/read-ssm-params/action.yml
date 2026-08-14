@@ -47,6 +47,12 @@ outputs:
   R2_APPLY_STORAGE_TOKEN:
     description: /infra/r2-apply-storage-token
     value: ${{ steps.fetch.outputs.R2_APPLY_STORAGE_TOKEN }}
+  B2_MANAGEMENT_KEY_ID:
+    description: /infra/b2-management-key-id
+    value: ${{ steps.fetch.outputs.B2_MANAGEMENT_KEY_ID }}
+  B2_MANAGEMENT_KEY:
+    description: /infra/b2-management-key
+    value: ${{ steps.fetch.outputs.B2_MANAGEMENT_KEY }}
 
 runs:
   using: composite
