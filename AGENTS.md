@@ -33,6 +33,8 @@ verbatim.
   token can refresh a `github_actions_variable` resource
   (`actions/create-github-app-token` has no permission for it at all).
 - `dns.tf` — Cloudflare zones and DNS records as config-as-data (#9).
+- `cloudflare.tf` — the two R2 buckets: `tofu-state` (ADR-0012) and
+  `agent-memory-backups`, dotfiles' append-only backup target (ADR-0017).
 - `variables.tf` — apply-time inputs fed via `TF_VAR_*`, never a literal in
   a committed file (the aws provider's local key halves, the Cloudflare
   account id).

@@ -25,3 +25,39 @@ resource "cloudflare_r2_bucket" "tofu_state" {
     prevent_destroy = true
   }
 }
+
+# Backup target for dotfiles' agent-memory store (#159, ADR-0017): the
+# client appends timestamped keys, never overwrites — append-only is a
+# client convention, R2 has no versioning/object-lock. location omitted:
+# for a fresh create the Computed attribute is the zero-diff path (same
+# v5.22 plan-modifier asymmetry tofu_state's comment records).
+resource "cloudflare_r2_bucket" "agent_memory_backups" {
+  account_id    = var.cloudflare_account_id
+  name          = "agent-memory-backups"
+  jurisdiction  = "default"
+  storage_class = "Standard"
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
+# Expire aged-out backups so the append-only history stays bounded.
+# 365d — tunable once the client's cadence lands (dotfiles#542).
+resource "cloudflare_r2_bucket_lifecycle" "agent_memory_backups" {
+  account_id  = var.cloudflare_account_id
+  bucket_name = cloudflare_r2_bucket.agent_memory_backups.name
+
+  rules = [{
+    id      = "expire-old-backups"
+    enabled = true
+    # empty prefix = whole bucket
+    conditions = { prefix = "" }
+    delete_objects_transition = {
+      condition = {
+        type    = "Age"
+        max_age = 31536000 # the schema's unit is seconds: 365 days
+      }
+    }
+  }]
+}
