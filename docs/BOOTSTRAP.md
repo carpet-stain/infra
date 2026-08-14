@@ -360,6 +360,52 @@ Once every path is green, deactivate the bootstrap key (§3). From here on,
 AGENTS.md's Branch & PR model and Credentials sections are the operating
 manual, not this doc.
 
+## 11. Backblaze B2 account and management key
+
+**Additive** (#189, ADR-0017): B2 joined the stack after the ten
+parameters §4 enumerates, so this section runs after the AWS store exists
+— §4's loop is the pre-B2 set, plus the two `/infra/b2-*` parameters
+created here. Nothing consumes B2 until the agent-memory backup bucket
+(#159), so this can run any time before that.
+
+- **Create the account** at backblaze.com; email + password go in iCloud
+  Passwords, sign-in verification via authenticator app (the login
+  triad); the master application key stays **unrecorded until needed** —
+  regenerable from the signed-in console, break-glass only, never the
+  tofu credential. Enable MFA. Recovery codes → the Bitwarden vault
+  (ADR-0016's split).
+- **Create the management application key** — a **named** key, not
+  master. Fine-grained capabilities are API/CLI-only (the web UI offers
+  coarse presets), so mint it with the B2 CLI (`brew install b2-tools`),
+  authorized once with the master key:
+
+  ```sh
+  b2 account authorize   # prompts: master keyID + applicationKey
+  b2 key create infra-tofu-management \
+    listBuckets,readBuckets,writeBuckets,deleteBuckets,listAllBucketNames,\
+  readBucketEncryption,writeBucketEncryption,readBucketRetentions,\
+  writeBucketRetentions,listKeys,writeKeys,deleteKeys
+  b2 account clear       # drop the master-key session
+  ```
+
+  Account-level (no bucket restriction — it must create #159's bucket),
+  no expiry. `writeKeys`/`deleteKeys` are there so tofu can later mint
+  the client's no-delete key (dotfiles#542) as code; a named key can
+  only grant capabilities it holds itself.
+
+- **Populate the two SSM parameters** (§4's loop shape — the printed
+  `keyID` and `applicationKey` from `b2 key create`'s output):
+
+  ```sh
+  for param in b2-management-key-id b2-management-key; do ...; done
+  ```
+
+  `/infra/b2-management-key-id` + `/infra/b2-management-key`, both
+  `SecureString` under `alias/infra-secrets`. `ssm.tf` adopts them with
+  temporary `import` blocks (the repo convention); nothing fetches them
+  yet — the `b2` provider block is empty and lazy (`versions.tf`), and
+  the CI/wrapper wiring lands with #159's bucket.
+
 ## What's still manual, permanently
 
 Not a bootstrap-only list — these stay manual forever, for reasons
@@ -383,6 +429,10 @@ tooling gaps:
   and "root still break-glass-only" join the periodic audit alongside
   the two containment fences (`iam/main.tf`'s header, ADR-0010 as
   amended by #126 and #155).
+- The B2 account scaffolding (§11, ADR-0017) — account creation, MFA,
+  and the management application key; "master key still unrecorded,
+  management key still the only tofu credential" joins the same periodic
+  audit.
 - The elevated Keychain items' read prompt — the fence the containment
   invariant rests on, and one "Always Allow" click (or a confirm setting
   that skips the keychain password) disables it silently: found live in

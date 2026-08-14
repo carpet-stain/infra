@@ -231,7 +231,8 @@ Bitwarden vault / Keychain).
 > `just tofu-iam` with the bootstrap key.
 
 Two tiers, two KMS keys, path as the boundary: `/infra/*` (crown jewels —
-App key, admin PAT, state passphrase, R2 pairs, Cloudflare token;
+App key, admin PAT, state passphrase, R2 pairs, Cloudflare token, B2
+management key (ADR-0017 — unconsumed until #159's wiring);
 `alias/infra-secrets`)
 and `/runtime/*` (the rotating vended token; `alias/runtime-secrets`). Every
 identity needs both the SSM path grant and `kms:Decrypt` on that tier's key —

@@ -21,6 +21,10 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 6.0"
     }
+    b2 = {
+      source  = "Backblaze/b2"
+      version = "~> 0.13"
+    }
   }
 
   backend "s3" {
@@ -54,6 +58,16 @@ provider "github" {
 # different credential from the R2 *S3* token the state backend uses
 # (R2_STORAGE_TOKEN, ADR-0002), which is R2's separate access-key flow.
 provider "cloudflare" {}
+
+# Backblaze B2, the versioned backup satellite (ADR-0017, #189): the
+# provider the agent-memory backup bucket (#159) will be managed through.
+# Auth is the B2 management key via B2_APPLICATION_KEY_ID /
+# B2_APPLICATION_KEY env vars — the provider reads them directly, so this
+# block stays empty. Auth is lazy, same as cloudflare's above: with no b2
+# resources yet this plans clean without the key, so neither CI nor the
+# local wrapper fetches /infra/b2-management-key* until #159 lands a
+# resource (that PR inherits the wiring — see #189's plan thread).
+provider "b2" {}
 
 # AWS SSM Parameter Store, the machine-secret store (ADR-0010, #121).
 # us-east-1 is the recorded region choice (docs/BOOTSTRAP.md §9). Credential

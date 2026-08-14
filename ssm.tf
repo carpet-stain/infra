@@ -24,7 +24,21 @@ locals {
     "r2-plan-storage-token"   = "R2 Object-Read-only token — consumers sha256 it into the S3 secret (ADR-0002)"
     "r2-apply-access-key-id"  = "R2 Object Read & Write S3 access key id (apply)"
     "r2-apply-storage-token"  = "R2 Object Read & Write token — consumers sha256 it into the S3 secret (ADR-0002)"
+    "b2-management-key-id"    = "Backblaze B2 management application key id (#189, ADR-0017) — the b2 provider"
+    "b2-management-key"       = "Backblaze B2 management application key (#189, ADR-0017) — the b2 provider"
   }
+}
+
+# Temporary adoption of the hand-created B2 params (docs/BOOTSTRAP.md §11)
+# — the repo's adopt-then-delete convention; remove once applied.
+import {
+  to = aws_ssm_parameter.this["b2-management-key-id"]
+  id = "/infra/b2-management-key-id"
+}
+
+import {
+  to = aws_ssm_parameter.this["b2-management-key"]
+  id = "/infra/b2-management-key"
 }
 
 resource "aws_ssm_parameter" "this" {
