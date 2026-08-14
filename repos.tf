@@ -7,11 +7,8 @@
 locals {
   repos = {
     agents = {
-      # Stood up empty and governed (dotfiles#563 spike; #177) — content
-      # lands via dotfiles' extraction PRs. auto_init seeds the README-stub
-      # initial commit at creation, before the ruleset resource applies, so
-      # main exists protected with no unprotected window; an empty repo's
-      # first push would otherwise be blocked forever by protect-main.
+      # Stood up empty (dotfiles#563, #177) — auto_init seeds main before the
+      # ruleset applies, so there's no unprotected window before content lands.
       description           = "Shared AI-agent definitions — personas, universal rules, skills, the memory contract. Provider-neutral markdown, consumed per-project"
       visibility            = "public"
       auto_init             = true
@@ -47,12 +44,8 @@ locals {
       has_wiki         = false
       has_discussions  = false
       allow_auto_merge = true
-      # dotfiles.pr-guards.yml's issue-link job (#449) hasn't propagated to
-      # project-starter-template.pr-guards.yml.jinja yet — scoped here, not
-      # in the shared required_status_checks block, so it doesn't become a
-      # required-but-never-reported check (permanent merge block) on every
-      # other managed repo. Fold into the shared block once it's ported
-      # everywhere and this becomes redundant.
+      # dotfiles.pr-guards.yml's issue-link job (#449) hasn't propagated to every
+      # repo's workflow yet — per-repo here, not main.tf's shared check list.
       extra_required_checks = ["issue link"]
       topics = [
         "configuration-management",
@@ -125,17 +118,8 @@ locals {
     }
 
     template-e2e = {
-      # Standing sandbox for project-starter-template's live e2e (tier 2,
-      # project-starter-template#42/#47), same `protect main` ruleset as
-      # every managed repo — no relaxed variant needed (#42's decision).
-      #
-      # Do NOT bundle the tofu-*.yml/vend-token.yml `repositories:` CSV
-      # additions into this same PR: create-github-app-token mints one
-      # token per the *entire* CSV, and 422s it whole if any listed repo
-      # doesn't exist/isn't installed yet — broke CI account-wide on
-      # infra#127's first attempt. Those CSV edits are a required
-      # follow-up PR, after this applies and the App is installed on the
-      # new repo by hand (AGENTS.md).
+      # Live-e2e sandbox (project-starter-template#42/#47) — App-token CSV
+      # additions are a required follow-up PR here, not bundled (AGENTS.md's #127).
       description           = "Permanent sandbox for project-starter-template's live e2e — rendered git-flow output pushed, verified, and discarded per run; not a real project"
       visibility            = "public"
       has_issues            = true
@@ -175,14 +159,8 @@ locals {
     "wontfix"             = { color = "ffffff", description = "This will not be worked on" }
   }
 
-  # Labels scoped to a single repo, keyed by owning repo — main.tf's
-  # github_issue_label.repo_only applies these instead of the cross-repo
-  # for_each above. Each entry's domain ties it to exactly one managed repo
-  # (#106's audit): Cloudflare's account surface and Tofu-drift automation
-  # are infra-only; dependency-release tracking, tool/plugin evaluation,
-  # $HOME/XDG hygiene, and the z0rc/dotfiles fork-review queue are
-  # dotfiles-only. Generalizes the one-off `infra_labels` pattern #104
-  # introduced for `theme: cloudflare` alone.
+  # Labels scoped to a single repo (main.tf's repo_only, #106's audit) — each
+  # entry's domain ties it to exactly one managed repo. Generalizes #104's one-off.
   repo_labels = {
     infra = {
       "theme: cloudflare" = { color = "F38020", description = "Cloudflare account surface — provider, zones, DNS, R2, stores" }

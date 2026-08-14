@@ -146,11 +146,11 @@ since an automated unlock defeats the lock's purpose.
 - `git pr --draft` opens the early draft; `git pr` finalizes it (`gh pr ready`).
   There's no direct-to-ready path.
 - `act` runs the Actions workflows locally via Docker for testing without pushing.
-- **`comment-concision`** (`scripts/check-comment-concision.sh`, ADR-0006) is
-  advisory only, unlike every other job here — it always exits 0 and only
-  nudges toward re-reading an outlier-length (15+ line) comment block on one
-  declaration, mirroring `dotfiles`' reference implementation
-  (`dotfiles` ADR-0031) rather than an independently-derived design.
+- **`comment-concision`** (`scripts/check-comment-concision.sh`, ADR-0019) blocks
+  on any `.tf`/`scripts/*.sh` comment block over 2 lines on one declaration —
+  relocate the why to its ADR/AGENTS.md/issue home, leave a tripwire + pointer.
+  Mirrors `dotfiles`' reference implementation (`dotfiles` ADR-0044) rather
+  than an independently-derived design.
 
 ## Credentials
 
@@ -209,11 +209,15 @@ Bitwarden vault / Keychain).
 - A GitHub App (ADR-0004, `app.tf`) is registered and installed on every
   repo in `local.repos` for future CI-side credential delegation — both by
   hand, not tofu-managed. Installation-repository membership specifically
-  can't be: GitHub's API rejects fine-grained PATs (and App-issued tokens)
-  on that endpoint entirely, so adding a new `local.repos` entry to the
-  App's install stays a manual step in the App's settings, not something
-  `tofu apply` picks up automatically (see `app.tf`'s top comment). The App
-  also **cannot** create a brand-new repo on this personal (non-org)
+  can't be: `github_app_installation_repository`'s `PUT
+/user/installations/{id}/repositories/{repo_id}` call rejects fine-grained
+  PATs, App installation tokens, and App user-access tokens outright
+  (confirmed against a live 403; `integrations/terraform-provider-github#2103`
+  reports the same symptom) — only a classic PAT with `repo` scope works, and
+  reintroducing a classic-scoped credential for one resource isn't worth it.
+  So a new `local.repos` entry's App install stays a manual step in the
+  App's settings, not something `tofu apply` picks up automatically (#30).
+  The App also **cannot** create a brand-new repo on this personal (non-org)
   account — GitHub rejects App installation tokens on the repo-creation
   endpoint for user accounts (ADR-0004's Consequences). Adding a genuinely
   new repo to `local.repos` always needs one human-run `just tofu-apply`;
@@ -224,7 +228,12 @@ Bitwarden vault / Keychain).
   `local.repos` itself — a new repo needs adding to that CSV in all four
   workflows too, or CI can read it (plan/drift) but never write to it (apply
   403s: confirmed live when #22 adopted `golden-ratio-dual-gate` before this
-  step was done).
+  step was done). Same landmine on `vend-token.yml`'s own `repositories:`
+  list (`.github/workflows/vend-token.yml`): `create-github-app-token` mints
+  one token for the _entire_ CSV and 422s it whole if any listed repo isn't
+  App-installed yet (broke CI account-wide on `infra`#127's first attempt) —
+  a new repo's CSV additions are always a follow-up PR, after the App
+  install lands, never bundled into the same PR as repo creation.
 
 ### Machine secrets — AWS SSM + IAM
 

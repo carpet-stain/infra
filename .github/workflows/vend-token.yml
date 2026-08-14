@@ -1,31 +1,14 @@
 name: Vend scoped token
 
-# Publishes a narrowly-scoped, rotating GitHub token into SSM's
-# /runtime/vended-token (#124, ADR-0010; formerly Bitwarden's
-# `vended-tokens` Project, #51/ADR-0008) so a local/agent shell can read a
-# working credential without ever touching the App's raw private key. The
-# one piece of automation that reads the crown-jewel tier unattended — so
-# it runs hardened: SHA-pinned actions, an empty GITHUB_TOKEN, a masked
-# minted token, and an OIDC role (infra-vend-write) whose grants are
-# GetParameter+Decrypt pinned to the App-key parameter alone, and
-# PutParameter+Encrypt on exactly /runtime/vended-token.
+# Publishes a narrowly-scoped, rotating GitHub token to SSM's /runtime/vended-token
+# (#124, ADR-0010) so a local/agent shell never touches the App's raw private key.
 on:
   schedule:
-    # Every 5 minutes → up to 288 runs/day. The minted token lives 1 hour, so
-    # when a run fires on schedule the freshest published token is within ~5
-    # min and has ~55 min of life left. That is NOT a hard guarantee: #76
-    # measured real gaps of 1.5-3.5h at the previous 20-min cadence, because
-    # GitHub's own docs call schedule: best-effort and delayable under load
-    # on public repos — no cadence tightening changes that. This narrows the
-    # average gap and its blast radius; it does not close it. See ADR-0008's
-    # #76 amendment for what was rejected (a self-requeuing dispatch chain)
-    # and the harder open question deferred to a follow-up issue.
-    # Public-repo Actions minutes are unmetered, so 288/day is free (a
-    # load-bearing "infra stays public" assumption, ADR-0008).
+    # Best-effort, not a hard guarantee — GitHub's schedule: trigger can lag
+    # hours under load on public repos regardless of cadence (ADR-0008 §#76/#98).
     - cron: "*/5 * * * *"
-  # Manual trigger for the masked-token dry run #51's acceptance calls for,
-  # and for re-vending immediately after the 60-day inactivity auto-disable
-  # (ADR-0008) is cleared.
+  # Manual trigger: the #51 dry run, or an immediate re-vend after the
+  # 60-day inactivity auto-disable (ADR-0008) is cleared.
   workflow_dispatch:
 
 # Only the newest vend matters — a queued run superseding an in-flight one
@@ -38,13 +21,8 @@ jobs:
   vend:
     name: mint and publish
     runs-on: ubuntu-latest
-    # Zero GITHUB_TOKEN repo permissions: this job authenticates entirely via
-    # the App key (from SSM) and the OIDC-assumed infra-vend-write role — it
-    # never touches the repo through GITHUB_TOKEN. id-token: write is the
-    # OIDC assertion, not a repo grant (job-scoped per ADR-0010's step 5); a
-    # schedule run presents the branch-ref sub, same as the applies. checkout
-    # still works because infra is public (clones anonymously), the same
-    # public assumption the cadence above already leans on.
+    # Zero GITHUB_TOKEN grants — auths entirely via the App key + OIDC
+    # infra-vend-write role; id-token: write is the OIDC assertion only (ADR-0010's step 5).
     permissions:
       id-token: write
     steps:
@@ -56,13 +34,8 @@ jobs:
           role-to-assume: ${{ vars.AWS_VEND_ROLE_ARN }}
           aws-region: us-east-1
 
-      # Read the App's private key from SSM (#124). Inline, not the shared
-      # read-ssm-params action: that action batches via GetParameters, and
-      # this role's grant is deliberately ssm:GetParameter on the one
-      # App-key ARN — the plural call would be denied. This read also
-      # exercises the role's EncryptionContext-pinned kms:Decrypt (see
-      # iam/main.tf). Masked line by line before it lands anywhere; the
-      # PLACEHOLDER guard mirrors read-ssm-params' loud failure.
+      # Inline, not read-ssm-params: that action's GetParameters (plural) would be
+      # denied — this role's grant is GetParameter on the App-key ARN alone (iam/main.tf).
       - name: Read App private key from SSM
         id: ssm-key
         run: |
@@ -78,48 +51,8 @@ jobs:
           delim="EOF_$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"
           { echo "GH_APP_PRIVATE_KEY<<${delim}"; printf '%s\n' "$value"; echo "$delim"; } >>"$GITHUB_OUTPUT"
 
-      # The vended token, scoped deliberately: {contents, issues,
-      # pull_requests, actions}: write and NO administration
-      # (create-github-app-token DOES expose permission-administration —
-      # omitting it is the point, not an accident). actions:write (#105)
-      # covers gh run view/list (CI diagnosis, e.g. the #88 investigation)
-      # and gh workflow run (dispatch, e.g. release-prepare) — write over
-      # read since dispatch is routine flow here, not just diagnosis;
-      # downgrade to read if that judgment changes. checks: read (#132) is
-      # token-wide too, added for template-e2e's live-e2e CI-status polling
-      # (project-starter-template#48) — benign on every vended repo, all
-      # public, so check-run state was already world-readable. Every
-      # permission on this token, actions included, is bounded by
-      # repositories below: it does NOT reach infra (still excluded) and
-      # administration stays absent, so the #51 crafted-PR-against-infra
-      # containment is untouched.
-      # repositories is the subset of managed repos with a live
-      # vended-token consumer — NOT every entry in local.repos minus infra
-      # (that stronger claim was already false: deal-finder and
-      # golden-ratio-dual-gate are in local.repos with no vended-token
-      # consumer and were never listed here; #132 corrected the comment
-      # rather than perpetuate it). template-e2e joins for
-      # project-starter-template#48's e2e runner, which needs both the
-      # write set (push branches, open PRs, rebase-merge) and checks: read
-      # (poll CI) there — it's a public, per-run-discarded sandbox with no
-      # repo/Actions secrets and no self-elevating workflow (verified live,
-      # #132), so the token-wide write set reaching it is low-consequence.
-      # Adding a repo here only works once the App is installed on it
-      # (else this mint 422s and every consumer gets a stale token, #127's
-      # failure mode) — confirmed installed before this list changed.
-      #
-      # workflows: write is a heavier grant than checks: read above — write
-      # access to CI config, not read access to status — and unlike checks,
-      # it's not already-benign-because-world-readable. Added token-wide
-      # anyway (not a second, narrower, template-e2e-only token) to match
-      # the #132 precedent and keep the vending surface at one token, one
-      # secret: confirm this tradeoff is acceptable before merging, since it
-      # also reaches dotfiles and project-starter-template's routine
-      # local/agent-shell consumption, not just template-e2e's e2e runner. A
-      # push touching a workflow file was rejected without it — confirmed
-      # live against template-e2e (project-starter-template#48's first
-      # bootstrap dispatch): "refusing to allow a GitHub App to create or
-      # update workflow ... without workflows permission".
+      # Scoped: {contents, issues, pull_requests, actions, checks, workflows}: write, no
+      # administration, repositories excludes infra — full per-permission history in ADR-0008's #163 amendment.
       - name: Mint scoped token
         id: app-token
         uses: ./.github/actions/mint-app-token
@@ -133,21 +66,12 @@ jobs:
           permission-actions: write
           permission-checks: read
           permission-workflows: write
-          # The vended token is consumed later by a local shell, not in this
-          # job — so it must survive past job end. Without this, the action
-          # revokes it on cleanup and every consumer gets a dead token (401).
+          # Consumed later by a local shell, not this job — without this the
+          # action revokes it on cleanup and every consumer gets a dead token (401).
           skip-token-revoke: "true"
 
-      # Publish {token, expires_at} as a single JSON SecureString at
-      # /runtime/vended-token. The first put-parameter creates it — no tofu
-      # resource on purpose, so nothing CI applies touches the rotating tier
-      # (ssm.tf's comment, ADR-0010). The minted token and its expiry reach
-      # the script only via env, never `${{ }}` interpolation inside the
-      # run: body (the secret-quoting discipline the tofu workflows use),
-      # and the value rides a 0600 tempfile via --cli-input-json, never argv
-      # (docs/BOOTSTRAP.md §10's lesson). add-mask is belt-and-suspenders
-      # over create-github-app-token's own masking; the put's output is
-      # trimmed to the version number, which leaks nothing.
+      # No tofu resource on purpose (ssm.tf, ADR-0010) — the first put-parameter
+      # creates it. Token rides env + a 0600 tempfile, never argv or `${{ }}` (docs/BOOTSTRAP.md §10).
       - name: Publish token to /runtime/vended-token
         env:
           APP_TOKEN: ${{ steps.app-token.outputs.token }}

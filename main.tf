@@ -42,22 +42,8 @@ resource "github_repository" "this" {
   archive_on_destroy = true
 
   lifecycle {
-    # Inert while squash-merge is off, and GitHub's create API stores its
-    # own defaults for them regardless of what's sent — pinning them makes
-    # every fresh repo drift once. Unmanaged on purpose.
-    #
-    # The other five (#88): GitHub's GET /repos omits every merge-setting
-    # field for a credential without write-tier repo access — confirmed
-    # empirically against this exact App-token config, not just read from
-    # docs. tofu-plan.yml's administration:read token gets them back as
-    # null, which the provider then diffs against these true/true/true
-    # config values on every single PR, a permanent 3-change floor with no
-    # real drift underneath. There's no read-tier permission that fixes
-    # this — granting write to the plan token would defeat #59's whole
-    # point (a compromised plan step could then rewrite repo settings).
-    # Unmanaged past initial creation; the "protect main" ruleset's
-    # allowed_merge_methods = ["rebase"] is the actual rebase-only
-    # enforcement, a harder gate than these convenience toggles.
+    # Two different reasons behind one list, both unmanaged on purpose —
+    # see ADR-0002's #88 amendment for the read-tier plan-token finding.
     ignore_changes = [
       squash_merge_commit_title,
       squash_merge_commit_message,
@@ -92,9 +78,8 @@ resource "github_issue_label" "this" {
   }
 }
 
-# Repo-specific labels (#13, #106) — deliberately outside the canonical
-# for_each above, since local.repo_labels shouldn't land on every managed
-# repo. Flattened to "repo:label" keys, same shape as github_issue_label.this.
+# Repo-specific labels (#13, #106, repos.tf's repo_labels) — outside the
+# canonical for_each above so they don't land on every managed repo.
 resource "github_issue_label" "repo_only" {
   for_each = {
     for pair in flatten([
@@ -117,9 +102,8 @@ resource "github_issue_label" "repo_only" {
   }
 }
 
-# Reattach state to the renamed/generalized resource instead of destroying
-# and recreating live labels (#106) — a plain rename would otherwise delete
-# each label from its repo for one apply cycle before recreating it.
+# Reattach state to the renamed/generalized resource (#106) — a plain rename
+# would delete each label from its repo for one apply cycle before recreating it.
 moved {
   from = github_issue_label.infra_only["theme: cloudflare"]
   to   = github_issue_label.repo_only["infra:theme: cloudflare"]
@@ -150,10 +134,8 @@ moved {
   to   = github_issue_label.repo_only["dotfiles:upstream-review"]
 }
 
-# The `protect main` ruleset on every managed repo: rebase-merge only, no
-# deletion or force-push, required PR checks with strict:true (see the
-# required_status_checks block below for why). Requires GitHub Pro on
-# private repos — every repo in the map is public today.
+# The `protect main` ruleset on every managed repo: rebase-merge only, required
+# PR checks (strict:true explained below) — needs GitHub Pro on private repos (ADR-0002).
 resource "github_repository_ruleset" "this" {
   for_each = local.repos
 
@@ -183,23 +165,13 @@ resource "github_repository_ruleset" "this" {
     }
 
     required_status_checks {
-      # strict:true — rebase-merge replays onto current main regardless, so
-      # this buys nothing for code correctness, but tofu-plan.yml's
-      # SHA-keyed plan artifact (ADR-0003) does depend on it: without
-      # strict mode, a merge can replay onto a main that moved since the
-      # last push, landing a different SHA than the one last planned. That
-      # degrades safely (the apply workflow's escape hatch, #26, catches a
-      # missing artifact either way) but forcing a fresh plan up front is
-      # cheaper than reaching for the escape hatch after the fact.
+      # Buys nothing for code correctness (rebase-merge replays regardless) but
+      # tofu-plan.yml's SHA-keyed artifact (ADR-0003) depends on it — see there.
       strict_required_status_checks_policy = true
       do_not_enforce_on_create             = false
 
-      # single commit/conventional commit/adr guard ship in pr-guards.yml on
-      # every managed repo; extra_required_checks (repos.tf) adds any
-      # checks a specific repo requires that haven't propagated to every
-      # repo's workflow yet — see dotfiles' entry for why that scoping
-      # matters (a required check with no run ever reported blocks merge
-      # forever, account-wide, if added here unscoped).
+      # extra_required_checks (repos.tf) is per-repo on purpose: an unscoped
+      # required check with no run ever reported blocks merge forever, account-wide.
       dynamic "required_check" {
         for_each = concat(["single commit", "conventional commit", "adr guard"], each.value.extra_required_checks)
         content {

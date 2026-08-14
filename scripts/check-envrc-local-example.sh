@@ -12,12 +12,8 @@ set -uo pipefail
 example_file=".envrc.local.example"
 real_file=".envrc.local"
 
-# Strip the value from any `export VAR=...` line, keeping the `export VAR=`
-# prefix so variable-name/comment drift is still caught.
-# [A-Za-z0-9_], not [A-Z_]: a digit or lowercase letter in a var name
-# (R2_..., TF_VAR_cloudflare_...) must not exempt its value from stripping — the
-# drift diff below prints to stderr, so an unstripped line would leak the
-# credential it holds.
+# [A-Za-z0-9_], not [A-Z_] — a var name char excluded here skips stripping,
+# and the drift diff below would print (leak) that credential to stderr.
 strip_values() { sed -E 's/^(export [A-Za-z0-9_]+=).*/\1/' "$1"; }
 
 if grep -E '^export [A-Za-z0-9_]+=.+' "$example_file" >/dev/null; then
