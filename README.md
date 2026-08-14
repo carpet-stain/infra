@@ -40,8 +40,8 @@ Adding a repo: an entry in `repos.tf`'s map — the next apply creates it
 with labels and its ruleset. Gotcha: GitHub seeds a fresh repo with its
 default labels, and the ones colliding with the canonical set (bug,
 documentation, duplicate, enhancement, good first issue, wontfix) need
-temporary `import` blocks; delete the three strays (help wanted, invalid,
-question) by hand. Adopting an existing repo: the map entry plus a
+temporary `import` blocks; delete the four strays (help wanted, invalid,
+question, accessibility) by hand. Adopting an existing repo: the map entry plus a
 temporary `import` block (`id` = repo name; labels `repo:label`, rulesets
 `repo:ruleset_id`), deleted once applied.
 
