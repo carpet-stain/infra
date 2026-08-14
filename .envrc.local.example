@@ -24,16 +24,6 @@
 #   (paste the secret access key at the prompt; omitting -A is deliberate.)
 # Rotate the Keychain item by re-running the command above with -U.
 
-# Cloudflare provider (#7, epic #6) — a least-privilege API token the
-# `cloudflare` provider reads directly, for managing the R2 state bucket
-# (#8) and DNS (#9, first resources wired here). Create it at Cloudflare
-# dashboard → My Profile → API Tokens → Create Token (custom): Zone → Zone
-# → Read, Zone → DNS → Edit, Account → Workers R2 Storage → Edit; scope
-# Zone Resources to the managed zones. This is a Cloudflare API *bearer*
-# token, distinct from the R2 *S3* credentials the state backend uses
-# (those are Keychain-fetched now).
-export CLOUDFLARE_API_TOKEN=
-
 # Cloudflare account id that filmitinc.com and leppez.com's zones (#9)
 # belong to — not secret, but an account identifier, so it's env-sourced
 # like every other one here rather than a literal in dns.tf.
