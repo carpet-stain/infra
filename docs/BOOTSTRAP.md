@@ -334,15 +334,16 @@ one parameter.
 
 ## 9. Cloudflare API token and the last variable
 
-Create the least-privilege Cloudflare API token per
-`.envrc.local.example`'s comment (Zone Read / DNS Edit / R2 Storage Edit),
-put it in `.envrc.local`'s `CLOUDFLARE_API_TOKEN`, and populate
-`/infra/cloudflare-api-token` with the same value (§4's loop shape).
-Create a second, read-only token for CI's plan/drift jobs (#144) — same
-custom-token flow, scopes Zone Read / DNS Read / R2 Storage Read, same
-zone scoping — and populate `/infra/cloudflare-api-token-ro`. Seed
-the account id: `env -u GH_TOKEN -u GITHUB_TOKEN gh variable set
-CLOUDFLARE_ACCOUNT_ID`.
+Create the least-privilege Cloudflare API token (Zone Read / DNS Edit / R2
+Storage Edit, scoped to the managed zones) at Cloudflare dashboard → My
+Profile → API Tokens → Create Token (custom), and populate
+`/infra/cloudflare-api-token` with it (§4's loop shape) — no `.envrc.local`
+copy; `scripts/with-infra-secrets.sh` fetches it from SSM like every other
+`/infra/*` value (#171). Create a second, read-only token for CI's
+plan/drift jobs (#144) — same custom-token flow, scopes Zone Read / DNS
+Read / R2 Storage Read, same zone scoping — and populate
+`/infra/cloudflare-api-token-ro`. Seed the account id: `env -u GH_TOKEN -u
+GITHUB_TOKEN gh variable set CLOUDFLARE_ACCOUNT_ID`.
 
 ## 10. Bring in the CI workflows
 
