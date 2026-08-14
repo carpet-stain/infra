@@ -47,41 +47,16 @@ provider "github" {
   owner = "carpet-stain"
 }
 
-# Cloudflare account governance (#7, epic #6): the provider that the R2
-# state bucket (#8) and DNS (#9) will be managed through. Auth is a
-# least-privilege API token via the CLOUDFLARE_API_TOKEN env var (from
-# .envrc.local, same never-a-literal discipline as everything else) — the
-# v5 provider reads it directly, so this block stays empty. Auth is lazy:
-# with no cloudflare resources yet this plans clean without the token, so
-# CI needs nothing until #8 lands a resource. NOTE this is a Cloudflare
-# API *bearer* token (Zone:Read, DNS:Edit, Workers R2 Storage:Edit) — a
-# different credential from the R2 *S3* token the state backend uses
-# (R2_STORAGE_TOKEN, ADR-0002), which is R2's separate access-key flow.
+# Manages the R2 state bucket (ADR-0012) and DNS (#9). CLOUDFLARE_API_TOKEN env
+# var — a different credential from the R2 S3 token the state backend uses (ADR-0002).
 provider "cloudflare" {}
 
-# Backblaze B2, the versioned backup satellite (ADR-0017, #189): manages
-# the agent-memory backup bucket (b2.tf, #159/ADR-0018). Auth is the B2
-# management key via B2_APPLICATION_KEY_ID / B2_APPLICATION_KEY env vars —
-# the provider reads them directly, so this block stays empty. The values
-# come from /infra/b2-management-key* in SSM: CI via read-ssm-params
-# (remapped, the SSM leaf is b2-management-key*), local via
-# with-infra-secrets.sh — never ambient.
+# The versioned backup satellite (ADR-0017, b2.tf/#159/ADR-0018).
+# B2_APPLICATION_KEY_ID/KEY env vars, sourced from SSM — never ambient (ADR-0010).
 provider "b2" {}
 
-# AWS SSM Parameter Store, the machine-secret store (ADR-0010, #121).
-# us-east-1 is the recorded region choice (docs/BOOTSTRAP.md §9). Credential
-# paths differ by caller and neither may ride the other's lane:
-#  - CI: the env chain — short-lived OIDC creds exported by
-#    configure-aws-credentials. Never Tofu variables: a saved-plan apply
-#    (ADR-0003) replays variable values baked at plan time, which would
-#    resurrect the plan job's expired read-only creds at apply. The R2
-#    backend cedes the AWS_* env names to this (its creds ride the
-#    runner-local r2-backend profile — see tofu-plan.yml's init comment
-#    and #164 for why raw keys must stay out of -backend-config).
-#  - Local: explicit vars from the Keychain-fetched infra-local-apply key
-#    (with-infra-secrets.sh; ADR-0010's #126 amendment) — explicit config
-#    outranks env, which locally still carries the R2 backend credentials.
-#    Local applies are always fresh plan+apply, so baking is moot there.
+# AWS SSM Parameter Store (ADR-0010, #121), us-east-1 (docs/BOOTSTRAP.md §9). CI
+# rides the OIDC env chain, never Tofu variables (#164); local uses explicit vars (AGENTS.md).
 provider "aws" {
   region     = "us-east-1"
   access_key = var.aws_access_key_id

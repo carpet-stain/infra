@@ -15,9 +15,8 @@ fi
 
 rc=0
 for f in "${files[@]}"; do
-  # Matches the name pattern anywhere, comments included — a comment naming
-  # a specific stored secret is stale prose worth flagging too. Prose like
-  # "secrets.*" doesn't match.
+  # Matches anywhere, comments included — a comment naming a stale secret is
+  # worth flagging too; prose like "secrets.*" doesn't match this pattern.
   while read -r name; do
     if [[ $name != "secrets.GITHUB_TOKEN" ]]; then
       echo "error: $f references $name — Actions holds no stored Secret (ADR-0011); put the value in SSM, non-secret pointers in Variables" >&2

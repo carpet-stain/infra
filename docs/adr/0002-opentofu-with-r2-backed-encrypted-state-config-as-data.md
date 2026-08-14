@@ -64,3 +64,30 @@ loses the state but not the world: every managed resource re-imports.
 Rulesets require GitHub Pro on private repos, so every repo in the map is
 public today — revisit if a private repo needs protection. Spent `import`/`moved`
 blocks are deleted once applied — the PR journal is their record.
+
+## Amendment — #88 (2026-07-27): the read-tier plan token forces two `ignore_changes` classes
+
+`github_repository.this`'s merge-setting attributes (`squash_merge_commit_title`,
+`squash_merge_commit_message`, `allow_auto_merge`, `allow_rebase_merge`,
+`delete_branch_on_merge`, `merge_commit_title`, `merge_commit_message`) are
+`ignore_changes`d, for two different reasons that read the same from the diff but
+aren't:
+
+- **`squash_merge_commit_title`/`squash_merge_commit_message`** are inert while
+  squash-merge is off, and GitHub's create API stores its own defaults for them
+  regardless of what's sent — pinning them makes every fresh repo drift once.
+  Unmanaged on principle, independent of #59.
+- **The other five** are a consequence of #59's plan-token narrowing (AGENTS.md's
+  Credentials section): `tofu-plan.yml`'s `administration:read`-scoped token gets
+  `GET /repos` back with every merge-setting field omitted — confirmed empirically
+  against this exact App-token config, not just read from GitHub's docs. The
+  provider then diffs `null` against these `true`/`true`/`true` config values on
+  every single PR, a permanent 3-change floor with no real drift underneath. No
+  read-tier permission fixes this: granting the plan token write access would
+  defeat #59's whole point (a compromised plan step could then rewrite repo
+  settings). Unmanaged past initial creation; the `protect main` ruleset's
+  `allowed_merge_methods = ["rebase"]` is the actual rebase-only enforcement, a
+  harder gate than these convenience toggles ever were.
+
+Revisit only if GitHub's read-scoped `GET /repos` response ever includes these
+fields, or if #59's plan-token tier changes.

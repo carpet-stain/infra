@@ -335,3 +335,40 @@ that shape the credential options considered here.
 
 No follow-up implementation issue in `infra` or `dotfiles` — this amendment
 is the deliverable #98 asked for.
+
+## Amendment — #163 (2026-08-14): the vended token's scope has drifted from this ADR's text
+
+The Decision section above still says the vended token is scoped to `{issues, pull_requests,
+contents}: write` — stale. The store this ADR decided (Bitwarden Projects/Machine Accounts) is
+superseded by ADR-0010, but the token-scope decision is this ADR's alone and ADR-0010 never
+re-decided it, so the drift belongs here, recorded rather than left silently out of date
+(surfaced by the comment-concision sweep, #163).
+
+Current grant, `.github/workflows/vend-token.yml`'s mint step: `{contents, issues,
+pull_requests, actions, checks, workflows}` — `administration` still never granted, `repositories`
+still excludes `infra`, so the #51 crafted-PR-against-infra containment this ADR designed is
+unaffected by every addition below.
+
+- **`actions: write`** (#105) — dotfiles moving its routine `GH_TOKEN` onto the vended path
+  (`dotfiles`#456) needed `gh run view/list` and `gh workflow run`; write over read since
+  dispatch is routine flow here, not just diagnosis.
+- **`checks: read`** (#132) — `template-e2e`'s live-e2e CI-status polling
+  (`project-starter-template`#48). Benign token-wide: every vended repo is public, so check-run
+  state was already world-readable. #132 also corrected this ADR's repo-list claim: `repositories`
+  was never "every `local.repos` entry except `infra`" — `deal-finder` and
+  `golden-ratio-dual-gate` have no vended-token consumer and were never listed.
+- **`workflows: write`** (no tracked `infra` issue — landed alongside `project-starter-template`#48/#51)
+  — `template-e2e`'s live-e2e run pushes a rendered git-flow payload including
+  `.github/workflows/*.yml`; GitHub Apps require this permission explicitly to write a workflow
+  file via git push, confirmed live (a 403 without it). Heavier than `checks: read` — write
+  access to CI config, not read access to status — and granted token-wide rather than a second
+  `template-e2e`-only token, matching the `checks: read` precedent of keeping one token, one
+  secret. Reaches `dotfiles` and `project-starter-template`'s routine local/agent-shell
+  consumption too, not just the `template-e2e` runner — flagged here for the same reason it's
+  flagged in the workflow's own comment: it's the one addition that widened the token's reach
+  without a corresponding narrower alternative being tried.
+
+Each addition kept the same shape this ADR's Decision established — token-wide, bounded by
+`repositories`, `administration` never requested — so the containment invariant holds; only the
+permission set itself has grown. Revisit if a future addition can't fit that shape, or if the
+token-wide-vs-per-consumer trade-off `workflows: write` accepted stops being clearly correct.

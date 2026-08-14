@@ -23,9 +23,7 @@ terraform {
     region       = "auto"
     use_lockfile = true
 
-    # R2 is S3-compatible, not AWS — skip every AWS-ism (same as the root
-    # module's backend; the R2 credentials arrive via AWS_* env from
-    # scripts/with-infra-secrets.sh, untouched by the aws provider below).
+    # R2 is S3-compatible, not AWS — skip every AWS-ism (same as the root module's backend).
     skip_credentials_validation = true
     skip_region_validation      = true
     skip_requesting_account_id  = true
@@ -35,11 +33,8 @@ terraform {
   }
 }
 
-# us-east-1 is the recorded region choice (docs/BOOTSTRAP.md §9). Explicit
-# access_key/secret_key — never the env chain: AWS_ACCESS_KEY_ID and
-# AWS_SECRET_ACCESS_KEY in this process are the R2 backend credentials, and
-# explicit provider config is the one slot that outranks them. The values
-# are the bootstrap key, Keychain-fetched by scripts/with-infra-secrets.sh.
+# us-east-1 (docs/BOOTSTRAP.md §9). Explicit vars, never the env chain — the
+# AWS_* env names carry the R2 backend creds here, not this module's (ADR-0010 §#126).
 provider "aws" {
   region     = "us-east-1"
   access_key = var.aws_access_key_id

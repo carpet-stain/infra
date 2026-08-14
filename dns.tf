@@ -45,9 +45,8 @@ locals {
     }
   }
 
-  # Flattened to a single map so cloudflare_dns_record can for_each over one
-  # collection; "zone:key" keeps addresses unique across zones without
-  # relying on any Cloudflare id.
+  # Flattened so cloudflare_dns_record can for_each one collection;
+  # "zone:key" keeps addresses unique without a Cloudflare id.
   dns_records_flat = merge([
     for zone, records in local.dns_records : {
       for key, record in records : "${zone}:${key}" => merge(record, { zone = zone })

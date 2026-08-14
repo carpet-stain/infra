@@ -403,3 +403,24 @@ password-manager vault") is superseded by ADR-0016: human logins default
 to iCloud Passwords, the Bitwarden vault holds what exceeds the login
 triad, and the four-tier decision tree lives there. Nothing machine-side
 changes; this ADR's Status stays Accepted.
+
+## Amendment — #163 (2026-08-14): OIDC sub claims are ID-pinned, and a same-sub residual
+
+Comment-concision sweep #163 surfaced two implementation facts this ADR never recorded, both
+in `iam/main.tf`'s trust-policy locals.
+
+**Sub claims are GitHub's ID-pinned form, not the plain form this ADR's own Decision text
+shows.** The Decision section above writes `repo:carpet-stain/infra:ref:refs/heads/main`; the
+actual trust policies use `repo:carpet-stain@5483606/infra@1304594349:...` — owner and repo
+numeric IDs baked into the sub, immune to a rename-then-resurrect attack the plain form
+wouldn't catch. Verified against a live `AssumeRoleWithWebIdentity` denial and each repo's own
+`GET /repos/{o}/{r}/actions/oidc/customization/sub` (`sub_claim_prefix`). Applies to both
+`infra`'s own sub and `project-starter-template-e2e-read`'s (#147) — same verification method,
+same ID-pinned shape.
+
+**Accepted residual: `infra-apply`, `infra-vend-write`, and `tofu-drift.yml` share one sub.**
+schedule/push/`workflow_dispatch` triggers all present the same branch-ref sub
+(`gh_sub_main`); only `pull_request` differs. That means the trust policy alone can't tell
+those three roles' triggering workflows apart on `main` — every main-branch workflow looks
+identical to it. Accepted for now since all three already sit in this ADR's non-escalation,
+same-trust-tier set; revisit if a workflow with a lesser trust tier is ever added on `main`.

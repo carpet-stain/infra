@@ -43,9 +43,8 @@ if [[ -n $gh_admin && $item == infra-aws-bootstrap ]]; then
   exit 1
 fi
 
-# The one gated read per item shape (infra-aws-bootstrap's precedent,
-# docs/BOOTSTRAP.md): access key id rides the account attribute (attribute
-# reads don't prompt), the secret is the password (-w prompts).
+# Account attribute doesn't prompt; the secret (-w) does — the one gated
+# read per item (docs/BOOTSTRAP.md).
 aws_key_id="$(security find-generic-password -s "$item" | awk -F'"' '$2 == "acct" {print $4}')"
 aws_secret="$(security find-generic-password -s "$item" -w)"
 [[ -n "$aws_key_id" && -n "$aws_secret" ]] || {
@@ -53,11 +52,8 @@ aws_secret="$(security find-generic-password -s "$item" -w)"
   exit 1
 }
 
-# One batched GetParameters, then pick by name. jq -e exits non-zero on a
-# missing/null value, so set -e fails closed. Credentials ride only this
-# call's environment — the ambient AWS_* names are claimed by the R2 backend
-# below, and the aws provider gets these same values as explicit TF_VARs
-# (the one slot that outranks the env chain).
+# Batched GetParameters; jq -e fails closed on missing/null. These creds ride
+# only this call's env — ambient AWS_* stays the R2 backend's (ADR-0010 §#126).
 names=(/infra/tf-state-passphrase /infra/r2-apply-access-key-id
   /infra/r2-apply-storage-token /infra/r2-account-id
   /infra/b2-management-key-id /infra/b2-management-key)
@@ -83,10 +79,8 @@ if [[ -n $gh_admin ]]; then
   values+=(gh_admin_token)
 fi
 
-# jq -e above fails closed on a missing name; this catches ssm.tf's shell
-# placeholder or an empty value, either of which would otherwise
-# sha256/encrypt into a silently-wrong config (docs/BOOTSTRAP.md's
-# population step).
+# Catches ssm.tf's placeholder or an empty value — either would otherwise
+# silently sha256/encrypt into a wrong config (ADR-0010's step 4).
 for name in "${values[@]}"; do
   [[ -n "${!name}" && "${!name}" != "PLACEHOLDER" ]] || {
     echo "with-infra-secrets: '$name' came back empty or PLACEHOLDER from SSM" >&2
@@ -102,15 +96,12 @@ export TF_VAR_aws_secret_access_key="$aws_secret"
 export B2_APPLICATION_KEY_ID="$b2_key_id"
 export B2_APPLICATION_KEY="$b2_key"
 
-# The github provider reads GITHUB_TOKEN (never GH_TOKEN), so the ambient
-# routine token stays untouched — gh-driving consumers (the bootstrap
-# script) must still drop GH_TOKEN themselves, since gh prefers it.
+# Sets GITHUB_TOKEN only (never GH_TOKEN) — gh-driving consumers still drop
+# GH_TOKEN themselves; gh prefers it over GITHUB_TOKEN (AGENTS.md).
 [[ -n $gh_admin ]] && export GITHUB_TOKEN="$gh_admin_token"
 
-# Derive the R2 S3 pair, endpoint, and enforced encryption exactly as .envrc
-# did before these moved out of it (ADR-0002): the S3 secret is sha256 of the
-# token value, the endpoint carries the account id, and TF_ENCRYPTION is built
-# by plain concatenation so no key material lands in a tracked file.
+# Same derivation .envrc used before this moved out of it (ADR-0002): S3
+# secret = sha256(token), endpoint carries account id, built by plain concatenation.
 export AWS_ACCESS_KEY_ID="$r2_key"
 AWS_SECRET_ACCESS_KEY="$(printf '%s' "$r2_token" | shasum -a 256 | cut -d' ' -f1)"
 export AWS_SECRET_ACCESS_KEY
