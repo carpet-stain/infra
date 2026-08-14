@@ -21,6 +21,11 @@ as:
 true_cost = monthly_cost + (exit_cost / expected_lifetime_months) + egress_exposure
 ```
 
+This is a mental model, not a computation — `exit_cost` and `expected_lifetime`
+aren't knowable numbers at adoption time. Its job is to make the two terms
+prose forgets (exit cost, egress) sit next to the one term it never forgets
+(monthly cost); §5 Q3/Q4 ask them directly rather than asking for a number.
+
 The framework below buys the most commoditized abstraction that satisfies each
 requirement — rent operations, own the artifact — and makes the exit path a
 precondition of adoption rather than an afterthought.
@@ -57,8 +62,12 @@ per-service ADR supersedes only its own decision, never this framework.
 5. **Instrument to standards.** OpenTelemetry for signals, Prometheus
    exposition for metrics. Exporters point anywhere; instrumentation is written
    once.
-6. **Terraform provider quality is a vendor signal.** Stale or community-only TF
-   support is operational lock-in via friction — a yellow flag.
+6. **Terraform provider quality is a vendor signal, scoped to providers that
+   plausibly warrant first-party support.** Stale coverage on a mainstream
+   platform is a yellow flag. It doesn't penalize the indie services this
+   framework already defaults to (Neon, Healthchecks.io, ntfy, Umami) for
+   having community-only providers — that's the expected shape of a small
+   vendor, not lock-in friction.
 7. **Thin cloud-specific layer.** Cloud-coupled bits (ingress annotations,
    storage classes, IAM bindings, WIF) isolated in per-environment overlays;
    workloads stay pure.
@@ -97,13 +106,21 @@ per-service ADR supersedes only its own decision, never this framework.
 | Observability              | OTel → Grafana/Loki/Tempo/Prometheus          | Grafana Cloud, Honeycomb        | CloudWatch as primary                              | Re-point exporter       |
 | Alerting                   | Alertmanager + ntfy/Pushover; Healthchecks.io | Grafana alerting                | CloudWatch Alarms                                  | Config in git           |
 
+The Warehouse/OLAP "Never" line is an absolute, not a threshold — personal
+scale doesn't approach 10 TB, so it can't fire the Consequences "revisit"
+trigger. DuckDB over Parquet isn't a managed-warehouse substitute; it's a file
+convention (query engine over files you already own), chosen because no
+volume at this scale justifies renting a warehouse.
+
 ### 4. When a Platform-class (proprietary) service is allowed
 
 All three must hold:
 
 - [ ] No credible OSS equivalent (Spanner-class consistency, TPUs, HSM-backed
       KMS, hyperscaler IAM/WIF), **or** operational savings are enormous and
-      measured.
+      measured against a stated baseline (the self-hosted or OSS alternative
+      actually priced, not assumed) — named in the adopting ADR, not waved
+      through.
 - [ ] Blast radius is contained: consumed behind a thin interface, state
       exportable.
 - [ ] Exit is written down: a paragraph in the adopting ADR naming the
@@ -131,11 +148,18 @@ Answer in the adopting ADR before taking on any new service:
    hosting share one provider account.
 8. Free-tier dependency: what's the paid price when the tier changes, and what's
    the trigger (rows, seats, requests) that flips it?
+9. Backup, not just exit: is there a scheduled, restore-tested backup path — an
+   exit path (`pg_dump`) is a migration tool, not a backup, unless it's
+   actually run on a schedule and the restore is verified?
+10. Vendor security posture: what does the vendor say about its own security
+    (SOC 2 / breach history / access controls) for the data this service will
+    hold?
 
 ### 6. Ongoing review — the decay check
 
 The checklist is answered at adoption, but two answers decay and get re-checked,
-not trusted (rule 2.9):
+not trusted (rule 2.9). **The manual audit is the primary path** — it covers
+every service regardless of what the vendor exposes:
 
 - **Free-tier / price terms (Q8).** Re-confirm the tier a service still sits in
   and its flip trigger on a periodic cadence, tied to the existing infra audit
@@ -145,9 +169,11 @@ not trusted (rule 2.9):
   moves a service toward operational lock-in — worth catching before the exit is
   needed, not during it.
 
-Instrument this where it's cheap: billing/usage alerts point at the same
-Alertmanager/ntfy spine as everything else (§3), so an approaching cap pages the
-same way an outage does.
+Automated billing/usage alerts on the Alertmanager/ntfy spine are a bonus, not
+the mechanism: most of the free tiers this framework rides (Neon,
+Healthchecks.io, PostHog) expose no usage API to alert on. Wire an alert only
+where the vendor actually has one; don't let its absence read as coverage the
+manual audit doesn't need to do.
 
 ### 7. Reference stack
 
@@ -201,11 +227,13 @@ change, or an env var.
 - Adopting a Platform-class service now costs a §4 justification — deliberate
   friction on the highest-lock-in tier, not a blanket ban.
 - Free-tier drift is a monitored signal, not a quarterly surprise (§6). The
-  cost: a recurring review item on the infra audit cadence, and billing/usage
-  alerts to wire up.
+  cost: a recurring review item on the infra audit cadence, and a billing/usage
+  alert wired up wherever a vendor actually exposes one to alert on.
 - **Revisit if** personal scale crosses the thresholds baked into the playbook
-  (the BigQuery-below-10-TB line, k3s vs. managed Kubernetes), or if a free-tier
-  change forces a paid migration the framework's own §6 check should have caught
-  first. §5 is a forcing function only while it's actually run — the follow-up to
-  wire it into `scripts/new-adr.sh` (tracked in #183) is what keeps it from
-  decaying into skipped prose.
+  (k3s vs. managed Kubernetes) — the BigQuery-below-10-TB line is deliberately
+  not one of these; it's a floor personal scale doesn't approach, not a
+  threshold to watch — or if a free-tier change forces a paid migration the
+  framework's own §6 check should have caught first. §5 is a forcing function
+  only while it's actually run — `scripts/new-adr.sh` now stamps an
+  integration ADR with the checklist as fields to answer, not prose to skip
+  (#185).

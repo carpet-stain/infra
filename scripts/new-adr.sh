@@ -5,14 +5,22 @@
 # auto-increment from the highest existing docs/adr/NNNN-*.md so ADRs are never
 # hand-numbered. Run via `just adr "Title"`.
 #
-# usage: scripts/new-adr.sh "Short decision title"
+# --integration stamps template-integration.md instead: adopting a new
+# external service answers ADR-0014 §5 as fields, not skippable prose (#185).
+#
+# usage: scripts/new-adr.sh [--integration] "Short decision title"
 set -euo pipefail
 
 ADR_DIR="docs/adr"
 TEMPLATE="$ADR_DIR/templates/template.md"
 
+if [[ "${1:-}" == "--integration" ]]; then
+  TEMPLATE="$ADR_DIR/templates/template-integration.md"
+  shift
+fi
+
 if [[ $# -lt 1 ]]; then
-  echo "usage: $0 \"Short decision title\"" >&2
+  echo "usage: $0 [--integration] \"Short decision title\"" >&2
   exit 1
 fi
 TITLE="$*"

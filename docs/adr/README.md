@@ -22,7 +22,8 @@ Create ADRs with the shipped tool — never hand-number or hand-format them.
 [`templates/template.md`](templates/template.md); the `just adr` recipe wraps it:
 
 ```sh
-just adr "Short decision title"       # next-numbered ADR from the template
+just adr "Short decision title"                     # next-numbered ADR from the template
+just adr --integration "Short decision title"       # adopting a new external service — stamps ADR-0014 §5 as fields to answer
 ```
 
 It's a plain, runner-agnostic script rather than adr-tools (which has no Debian
