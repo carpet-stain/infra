@@ -59,7 +59,7 @@ jobs:
         with:
           client-id: ${{ vars.GH_APP_CLIENT_ID }}
           private-key: ${{ steps.ssm-key.outputs.GH_APP_PRIVATE_KEY }}
-          repositories: dotfiles,project-starter-template,template-e2e
+          repositories: dotfiles,project-starter-template,template-e2e,agents
           permission-contents: write
           permission-issues: write
           permission-pull-requests: write
