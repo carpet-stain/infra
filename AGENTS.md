@@ -283,6 +283,11 @@ inactivity. Local shells then loud-fail on a stale token — the designed
 degradation. Re-enable `vend-token.yml` from the Actions tab (or run it once
 via `workflow_dispatch`) to resume.
 
+`/runtime/agent-memory-backup-key` (dotfiles#542's B2 client key, #200) is a
+second permanently-manual `/runtime/*` value alongside the vended token —
+minted and published by hand via the bootstrap key, never tofu-adopted
+(`docs/BOOTSTRAP.md` §12).
+
 ### CI secrets and variables
 
 > Realizes ADR-0010 on top of ADR-0003's saved-plan model: CI holds **no

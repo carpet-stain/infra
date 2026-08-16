@@ -409,6 +409,59 @@ created here. Nothing consumes B2 until the agent-memory backup bucket
   (#159's wiring; the `b2` provider block itself stays empty,
   `versions.tf`).
 
+## 12. The agent-memory backup client's B2 key
+
+**Additive** (#200, ADR-0017/ADR-0018): dotfiles#542's backup client needs a
+key that can add versions but never delete them. Mint it the same way as
+the management key (§11) — by hand, with the B2 CLI, using the management
+key already resident in SSM:
+
+```sh
+b2 account authorize   # prompts: management keyID + applicationKey (§11)
+b2 key create --bucket carpet-stain-agent-memory-backups \
+  agent-memory-backup-client listFiles,listBuckets,writeFiles
+b2 account clear
+```
+
+Bucket-scoped, no `deleteFiles` — a leaked or buggy client can only add
+versions. `listBuckets` is required despite the bucket restriction:
+dotfiles' `b2` CLI resolves the bucket name to an ID via that capability
+before every call (confirmed against the installed `b2-tools` 4.7.1
+CLI's own `--help`).
+
+**Publish it to `/runtime/agent-memory-backup-key`**, not `/infra/*` —
+`infra-local-read`'s existing `/runtime/*` wildcard already covers the
+read dotfiles' `aws-vended-token.sh` needs, so no new read grant is
+required. Writing it is the wrinkle: neither `infra-local-apply`
+(`/infra/*` only) nor `infra-local-read` (`/runtime/*` read-only) can
+write here, and giving either a standing `/runtime/*` write grant would
+undercut ADR-0010's tier boundary for a parameter that's populated once
+and barely touched again. Use the **bootstrap key** (§3) instead — it
+already holds `ssm:*`/`kms:*` on `Resource: "*"`, the same one-time-use
+shape as §4's very first parameter population before any other identity
+existed:
+
+```sh
+export AWS_SECRET_ACCESS_KEY="$(security find-generic-password -s infra-aws-bootstrap -w)"
+export AWS_ACCESS_KEY_ID=<the item's acct attribute> AWS_REGION=us-east-1
+
+jq -n --arg id "<keyID from b2 key create>" --arg k "<applicationKey from b2 key create>" \
+  '{Name: "/runtime/agent-memory-backup-key", Type: "SecureString",
+    KeyId: "alias/runtime-secrets", Overwrite: true,
+    Description: "B2 no-delete key {key_id, application_key} for dotfiles#542 (#200)",
+    Value: ({key_id: $id, application_key: $k} | tostring)}' | \
+  aws ssm put-parameter --cli-input-json file:///dev/stdin --output text --query Version
+```
+
+Deactivate the bootstrap key again immediately after (§3's discipline —
+reactivating it is a break-glass act, not a routine one, even for a
+single write). **Not tofu-adopted**: unlike the management key, this
+parameter never lands in `ssm.tf` — `/runtime/*` stays outside tofu
+state by design (`ssm.tf`'s header comment, ADR-0010), so this is a
+second permanently-manual value alongside the vended token, not a
+`ssm.tf` entry with `ignore_changes`. Re-run this section whenever the
+key needs rotating; nothing tofu-managed depends on its value.
+
 ## What's still manual, permanently
 
 Not a bootstrap-only list — these stay manual forever, for reasons
