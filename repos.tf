@@ -136,6 +136,12 @@ locals {
     }
   }
 
+  # Deliberation-agent machine accounts — see #172/ADR-0035.
+  collaborators = {
+    "carpet-stain-backlog-manager" = { permission = "triage" }
+    "carpet-stain-plan-reviewer"   = { permission = "read" }
+  }
+
   labels = {
     "agent-ready"         = { color = "2EA043", description = "Mechanical + verifiable; an autonomous agent can implement it without human judgment" }
     "architecture"        = { color = "1D76DB", description = "Architecturally significant — requires an ADR" }

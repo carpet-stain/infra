@@ -1,10 +1,11 @@
 # infra
 
 GitHub account governance as code — repository settings, the canonical
-label set, and `protect main` rulesets for every repo in `repos.tf`'s map,
-managed with OpenTofu. The stack (OpenTofu, R2-backed encrypted state,
-config-as-data) is ADR-0002; the config originated in the dotfiles repo and
-moved here (its ADR-0022/0024 record the founding decisions and the move).
+label set, `protect main` rulesets, and least-privilege collaborator
+grants for every repo in `repos.tf`'s map, managed with OpenTofu. The
+stack (OpenTofu, R2-backed encrypted state, config-as-data) is ADR-0002;
+the config originated in the dotfiles repo and moved here (its
+ADR-0022/0024 record the founding decisions and the move).
 
 ## Install
 

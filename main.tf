@@ -78,6 +78,19 @@ resource "github_issue_label" "this" {
   }
 }
 
+# Deliberation-agent collaborator grants — see #172/ADR-0035. Push-prevention
+# is structural (main branch protection), not a withheld role.
+resource "github_repository_collaborator" "this" {
+  for_each = {
+    for pair in setproduct(keys(local.repos), keys(local.collaborators)) :
+    "${pair[0]}:${pair[1]}" => { repo = pair[0], username = pair[1] }
+  }
+
+  repository = github_repository.this[each.value.repo].name
+  username   = each.value.username
+  permission = local.collaborators[each.value.username].permission
+}
+
 # Repo-specific labels (#13, #106, repos.tf's repo_labels) — outside the
 # canonical for_each above so they don't land on every managed repo.
 resource "github_issue_label" "repo_only" {
