@@ -81,7 +81,7 @@ jobs:
         with:
           client-id: ${{ vars.GH_APP_CLIENT_ID }}
           private-key: ${{ steps.ssm.outputs.GH_APP_PRIVATE_KEY }}
-          repositories: dotfiles,infra,project-starter-template,golden-ratio-dual-gate,deal-finder,template-e2e
+          repositories: dotfiles,infra,project-starter-template,golden-ratio-dual-gate,deal-finder,template-e2e,agents
           permission-administration: read
           permission-issues: read
 
