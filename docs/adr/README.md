@@ -32,6 +32,14 @@ file and fill in the sections. The **Alternatives considered** section — each
 rejected option and _why_ — is the point: it's what makes the design history
 walkable.
 
+## Numbering gap — 0022
+
+0022 is intentionally free — never written and not reused. Something briefly
+cited it before the encrypted-state decision landed in ADR-0002 instead; 0023
+took the next slot rather than backfilling. `new-adr.sh` numbers from the
+highest existing file, so 0022 stays skipped permanently, not a bug to fix
+(#219).
+
 ## Superseding
 
 When a later decision replaces an earlier one, create the new ADR, then set the

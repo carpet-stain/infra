@@ -3,7 +3,7 @@
 # from the environment (AWS_ENDPOINT_URL_S3, AWS_ACCESS_KEY_ID,
 # AWS_SECRET_ACCESS_KEY — derived in .envrc) so no account identifier lands
 # in this public repo; client-side encryption is enforced via TF_ENCRYPTION,
-# also built by .envrc. See ADR-0022.
+# also built by .envrc. See ADR-0002.
 
 terraform {
   required_version = "~> 1.12"
