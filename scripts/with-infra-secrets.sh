@@ -57,7 +57,7 @@ aws_secret="$(security find-generic-password -s "$item" -w)"
 names=(/infra/tf-state-passphrase /infra/r2-apply-access-key-id
   /infra/r2-apply-storage-token /infra/r2-account-id
   /infra/b2-management-key-id /infra/b2-management-key
-  /infra/cloudflare-api-token)
+  /infra/neon-api-key /infra/cloudflare-api-token)
 [[ -n $gh_admin ]] && names+=(/infra/gh-admin-token)
 params="$(AWS_ACCESS_KEY_ID="$aws_key_id" AWS_SECRET_ACCESS_KEY="$aws_secret" \
   AWS_REGION=us-east-1 aws ssm get-parameters --with-decryption --output json \
@@ -74,8 +74,9 @@ r2_token="$(val r2-apply-storage-token)"
 r2_account="$(val r2-account-id)"
 b2_key_id="$(val b2-management-key-id)"
 b2_key="$(val b2-management-key)"
+neon_key="$(val neon-api-key)"
 cf_token="$(val cloudflare-api-token)"
-values=(passphrase r2_key r2_token r2_account b2_key_id b2_key cf_token)
+values=(passphrase r2_key r2_token r2_account b2_key_id b2_key neon_key cf_token)
 if [[ -n $gh_admin ]]; then
   gh_admin_token="$(val gh-admin-token)"
   values+=(gh_admin_token)
@@ -97,6 +98,10 @@ export TF_VAR_aws_secret_access_key="$aws_secret"
 # b2-management-key*, remapped here, same as CI's read-ssm-params remap.
 export B2_APPLICATION_KEY_ID="$b2_key_id"
 export B2_APPLICATION_KEY="$b2_key"
+
+# The neon provider's native env name (ADR-0023) — fetched now so a later
+# local apply against a real project needs no second wiring pass.
+export NEON_API_KEY="$neon_key"
 
 # The cloudflare provider's native env name — no ambient .envrc.local copy
 # anymore (#171); this Keychain-gated fetch is now the token's only home.

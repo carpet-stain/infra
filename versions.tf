@@ -25,6 +25,10 @@ terraform {
       source  = "Backblaze/b2"
       version = "~> 0.13"
     }
+    neon = {
+      source  = "kislerdm/neon"
+      version = "~> 0.15.0"
+    }
   }
 
   backend "s3" {
@@ -54,6 +58,10 @@ provider "cloudflare" {}
 # The versioned backup satellite (ADR-0017, b2.tf/#159/ADR-0018).
 # B2_APPLICATION_KEY_ID/KEY env vars, sourced from SSM — never ambient (ADR-0010).
 provider "b2" {}
+
+# Bootstrap only — no Neon project/database/role, so this stays empty and
+# lazy like b2/cloudflare above (ADR-0023, #204).
+provider "neon" {}
 
 # AWS SSM Parameter Store (ADR-0010, #121), us-east-1 (docs/BOOTSTRAP.md §9). CI
 # rides the OIDC env chain, never Tofu variables (#164); local uses explicit vars (AGENTS.md).

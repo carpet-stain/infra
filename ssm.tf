@@ -26,7 +26,15 @@ locals {
     "r2-apply-storage-token"  = "R2 Object Read & Write token — consumers sha256 it into the S3 secret (ADR-0002)"
     "b2-management-key-id"    = "Backblaze B2 management application key id (#189, ADR-0017) — the b2 provider"
     "b2-management-key"       = "Backblaze B2 management application key (#189, ADR-0017) — the b2 provider"
+    "neon-api-key"            = "Neon Postgres management API key (#204, ADR-0023) — the neon provider"
   }
+}
+
+# Temporary adoption of the hand-created Neon param (docs/BOOTSTRAP.md §15)
+# — the repo's adopt-then-delete convention; remove once applied.
+import {
+  to = aws_ssm_parameter.this["neon-api-key"]
+  id = "/infra/neon-api-key"
 }
 
 resource "aws_ssm_parameter" "this" {
