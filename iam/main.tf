@@ -15,6 +15,13 @@ locals {
   pst_sub_prefix = "repo:carpet-stain@5483606/project-starter-template@1305207591"
   pst_sub_main   = "${local.pst_sub_prefix}:ref:refs/heads/main"
 
+  # agents' and dotfiles' pr-code-review.yml (#220): both ID-pinned,
+  # :pull_request (no :ref) since the trigger is pull_request, not a branch.
+  pr_review_openrouter_subs = [
+    "repo:carpet-stain@5483606/agents@1333182579:pull_request",
+    "repo:carpet-stain@5483606/dotfiles@247179961:pull_request",
+  ]
+
   ssm_param_arn = "arn:aws:ssm:us-east-1:${data.aws_caller_identity.this.account_id}:parameter"
 
   # Read grants mirror plan/apply parity (ADR-0010); DescribeParameters is
@@ -242,6 +249,48 @@ resource "aws_iam_role_policy" "pst_e2e_read" {
         Effect   = "Allow"
         Action   = "ssm:GetParameter"
         Resource = "${local.ssm_param_arn}/runtime/vended-token"
+      },
+      {
+        Sid      = "DecryptRuntimeTier"
+        Effect   = "Allow"
+        Action   = "kms:Decrypt"
+        Resource = aws_kms_key.runtime_secrets.arn
+      },
+    ]
+  })
+}
+
+# agents' and dotfiles' pr-code-review.yml — dotfiles' OIDC sub isn't
+# ID-pinned yet, so its AssumeRoleWithWebIdentity denies until flipped (#220).
+resource "aws_iam_role" "pr_review_openrouter_read" {
+  name = "pr-review-openrouter-read"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Federated = aws_iam_openid_connect_provider.github.arn }
+      Action    = "sts:AssumeRoleWithWebIdentity"
+      Condition = {
+        StringEquals = {
+          "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
+          "token.actions.githubusercontent.com:sub" = local.pr_review_openrouter_subs
+        }
+      }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "pr_review_openrouter_read" {
+  name = "read-openrouter-key"
+  role = aws_iam_role.pr_review_openrouter_read.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid      = "ReadOpenrouterKeyOnly"
+        Effect   = "Allow"
+        Action   = "ssm:GetParameter"
+        Resource = "${local.ssm_param_arn}/runtime/openrouter-api-key"
       },
       {
         Sid      = "DecryptRuntimeTier"

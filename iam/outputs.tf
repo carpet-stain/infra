@@ -21,3 +21,8 @@ output "pst_e2e_read_role_arn" {
   value       = aws_iam_role.pst_e2e_read.arn
   description = "Seed as vars.AWS_VEND_READ_ROLE_ARN on project-starter-template — its e2e-*.yml workflows (#147)."
 }
+
+output "pr_review_openrouter_read_role_arn" {
+  value       = aws_iam_role.pr_review_openrouter_read.arn
+  description = "Seed as vars.AWS_OPENROUTER_ROLE_ARN on agents and dotfiles — their pr-code-review.yml workflows (#220)."
+}

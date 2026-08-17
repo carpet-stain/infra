@@ -582,6 +582,43 @@ gets the provider a management credential to plan against, same shape as
   the empty, lazy `provider "neon" {}` block plans clean without it
   (`versions.tf`).
 
+## 16. The PR-review OpenRouter key
+
+**Additive** (#220): the advisory LLM reviewer (`pr-code-review.yml`, agents
+and dotfiles) reads its OpenRouter key from SSM instead of a per-repo Actions
+secret. `iam/main.tf`'s `pr-review-openrouter-read` OIDC role (applied in the
+next break-glass IAM apply, §5's shape) grants exactly this one parameter to
+both repos' `pull_request`-triggered workflows.
+
+**Publish it to `/runtime/openrouter-api-key`**, not `/infra/*` — the key is
+consumed only via the new OIDC role, so no local identity needs a read grant.
+Neither `infra-local-apply` (`/infra/*` only) nor `infra-local-read`
+(`/runtime/*` read-only) can write here; use the bootstrap key (§3, §12's
+shape):
+
+```sh
+export AWS_SECRET_ACCESS_KEY="$(security find-generic-password -s infra-aws-bootstrap -w)"
+export AWS_ACCESS_KEY_ID=<the item's acct attribute> AWS_REGION=us-east-1
+
+jq -n --arg v "<the OpenRouter key from openrouter.ai>" \
+  '{Name: "/runtime/openrouter-api-key", Type: "SecureString",
+    KeyId: "alias/runtime-secrets", Overwrite: true,
+    Description: "OpenRouter key for pr-code-review.yml (agents, dotfiles) via OIDC (#220)",
+    Value: $v}' | \
+  aws ssm put-parameter --cli-input-json file:///dev/stdin --output text --query Version
+```
+
+Deactivate the bootstrap key again immediately after (§3's discipline).
+**Not tofu-adopted** — `/runtime/*` stays outside tofu state by design
+(`ssm.tf`'s header comment, ADR-0010), joining the vended token, §12's B2
+client key, and §13/14's PATs/Anthropic keys as a permanently-manual value.
+`--overwrite` rotates it in place; re-run this section whenever it needs
+rotating. Before this role can do anything, dotfiles' OIDC sub
+customization needs flipping to the ID-pinned form (#220 step C, verified
+via a live `AssumeRoleWithWebIdentity` against both repos) — agents already
+reports the pinned form. The consuming workflow changes themselves
+(`agents#16`, `dotfiles#626`) are separate, sequenced after that flip.
+
 ## What's still manual, permanently
 
 Not a bootstrap-only list — these stay manual forever, for reasons
