@@ -296,6 +296,17 @@ via the AWS console (it holds no access key), never tofu-adopted
 wildcard already covers reading them, no new grant. Rotate ≤1yr (PAT
 expiry) — joins the periodic audit list above.
 
+`/runtime/backlog-manager-anthropic-key` and
+`/runtime/plan-reviewer-anthropic-key` (dotfiles#612's per-agent spend
+attribution, #205) are two more still, same console-admin publish and
+`infra-local-read` read path (`docs/BOOTSTRAP.md` §14). No CI OIDC role
+reads them yet — dotfiles#596's hosted agent runtime, the actual
+consumer, doesn't name a concrete workflow/repo to ID-pin a `sub` to;
+filed as a follow-up once it does, shaped like
+`project-starter-template-e2e-read` below. No Anthropic key lives in
+Actions secrets in the meantime. Rotate ≤1yr by policy (the key itself
+carries no expiry) — joins the periodic audit list above.
+
 ### CI secrets and variables
 
 > Realizes ADR-0010 on top of ADR-0003's saved-plan model: CI holds **no
