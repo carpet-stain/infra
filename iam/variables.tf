@@ -22,3 +22,18 @@ variable "aws_secret_access_key" {
     (docs/BOOTSTRAP.md §9). Demoted to break-glass once CI runs on OIDC.
   EOT
 }
+
+variable "gcp_dispatch_service_account_unique_id" {
+  type        = string
+  nullable    = false
+  description = <<-EOT
+    Numeric unique_id (not email) of gcp/'s cloud-run-dispatch service
+    account — pins infra-dispatch-read's trust condition to this one
+    identity, never a wildcard (ADR-0010's #163 ID-pinning discipline,
+    ADR-0024). Read it with `gcloud iam service-accounts describe
+    cloud-run-dispatch@<project>.iam.gserviceaccount.com
+    --format='value(uniqueId)'` after gcp/'s first apply creates the SA
+    (docs/BOOTSTRAP.md §17) — a real chicken-and-egg step, same shape as
+    ADR-0010's own bootstrap sequence.
+  EOT
+}

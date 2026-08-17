@@ -624,6 +624,103 @@ via a live `AssumeRoleWithWebIdentity` against both repos) — agents already
 reports the pinned form. The consuming workflow changes themselves
 (`agents#16`, `dotfiles#626`) are separate, sequenced after that flip.
 
+## 17. GCP project, Cloud Scheduler, and the dispatch Cloud Run Job
+
+**Additive** (ADR-0024, #191): `infra`'s first GCP resource — a Cloud
+Scheduler tick every 5 min invokes a Cloud Run Job that federates keyless
+into AWS to re-trigger `vend-token.yml`, closing the dead window GitHub's
+own throttled `schedule:` trigger leaves. **Code-only in the PR that added
+this section** — the project, billing, and every apply below is a manual
+step for you to run, not something CI or an agent did.
+
+This has a real chicken-and-egg: `gcp/`'s Cloud Run Job needs
+`iam/`'s `infra-dispatch-read` role ARN, and `iam/`'s trust condition
+needs `gcp/`'s service account's numeric id — neither exists before the
+other's first apply. Four phases, in order:
+
+- **Create the GCP project and enable billing** (console or `gcloud
+projects create`), then authenticate locally:
+
+  ```sh
+  gcloud auth application-default login
+  ```
+
+  No service-account key, no Keychain item — `gcp/`'s `provider "google"
+{}` (`gcp/versions.tf`) reads Application Default Credentials directly,
+  the provider's own native local-auth story (no AWS-bootstrap-key
+  equivalent exists for GCP yet). Set `TF_VAR_google_project_id` (and
+  optionally `TF_VAR_google_region`, default `us-central1`) in
+  `.envrc.local`.
+
+- **Phase 1 — partial apply, the pieces that don't need the AWS role ARN
+  or a built image**: the two vars are still required (`nullable = false`
+  in `gcp/variables.tf`), so export throwaway placeholders for this one
+  command only.
+
+  ```sh
+  export TF_VAR_aws_dispatch_role_arn=pending TF_VAR_dispatch_image=pending
+  just tofu-gcp init
+  just tofu-gcp apply \
+    -target=google_project_service.run \
+    -target=google_project_service.cloudscheduler \
+    -target=google_project_service.artifactregistry \
+    -target=google_artifact_registry_repository.dispatch \
+    -target=google_service_account.dispatch
+  ```
+
+- **Phase 2 — build and push the image**, now that the Artifact Registry
+  repo exists:
+
+  ```sh
+  gcloud auth configure-docker "${TF_VAR_google_region}-docker.pkg.dev"
+  image="${TF_VAR_google_region}-docker.pkg.dev/${TF_VAR_google_project_id}/infra-dispatch/dispatch-vend-token:$(git rev-parse --short HEAD)"
+  docker build -t "$image" gcp/dispatch/
+  docker push "$image"
+  ```
+
+  Set `TF_VAR_dispatch_image="$image"` in `.envrc.local` — replace it
+  whenever `gcp/dispatch/` changes and re-push.
+
+- **Phase 3 — seed `iam/`'s trust condition and apply it**:
+
+  ```sh
+  gcloud iam service-accounts describe \
+    "cloud-run-dispatch@${TF_VAR_google_project_id}.iam.gserviceaccount.com" \
+    --format='value(uniqueId)'
+  ```
+
+  Set `TF_VAR_gcp_dispatch_service_account_unique_id` to that value in
+  `.envrc.local`, then (Keychain prompt: `infra-aws-bootstrap`, reactivate
+  first per §3):
+
+  ```sh
+  just tofu-iam apply
+  just tofu-iam output dispatch_read_role_arn
+  ```
+
+  Set `TF_VAR_aws_dispatch_role_arn` to that ARN in `.envrc.local`,
+  replacing phase 1's placeholder.
+
+- **Phase 4 — the full `gcp/` apply**, now that both real values exist:
+
+  ```sh
+  just tofu-gcp apply
+  ```
+
+  Creates the Cloud Run Job, the scheduler-invoker service account and
+  its `roles/run.invoker` binding (scoped to this one job), and the
+  Cloud Scheduler job itself.
+
+- **Bootstrap the first dispatch token** — `vend-token.yml`'s new step
+  publishes `/runtime/infra-dispatch-token` on its next run, but nothing
+  has triggered a run yet with the new step live; fire one by hand
+  (`gh workflow run vend-token.yml`) and verify the parameter exists
+  before trusting the scheduler to find it on its first real tick.
+
+- **Verify end to end**: `gcloud scheduler jobs run vend-token-dispatch-tick
+--location="$TF_VAR_google_region"` (or wait for the next natural tick),
+  then confirm a fresh `vend-token.yml` run appears in the Actions tab.
+
 ## What's still manual, permanently
 
 Not a bootstrap-only list — these stay manual forever, for reasons
@@ -655,6 +752,11 @@ tooling gaps:
   and the management API key; the §6 community-provider decay watch
   (provider health, since the key itself carries no expiry) joins the same
   periodic audit.
+- The GCP project scaffolding (§17, ADR-0024) — project creation, billing,
+  Application Default Credentials, and the four-phase `gcp/`/`iam/`
+  bootstrap ordering; `gcp/dispatch/`'s image rebuild-and-push whenever the
+  container source changes joins the same periodic audit, since nothing
+  rebuilds it automatically.
 - The elevated Keychain items' read prompt — the fence the containment
   invariant rests on, and one "Always Allow" click (or a confirm setting
   that skips the keychain password) disables it silently: found live in

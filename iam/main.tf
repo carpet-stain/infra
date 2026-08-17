@@ -72,6 +72,13 @@ resource "aws_iam_openid_connect_provider" "github" {
   client_id_list = ["sts.amazonaws.com"]
 }
 
+# Same no-thumbprint-needed shape as github above — recognized issuer.
+# gcp/'s dispatch job mints its own ID token here (ADR-0024, #191).
+resource "aws_iam_openid_connect_provider" "google" {
+  url            = "https://accounts.google.com"
+  client_id_list = ["sts.amazonaws.com"]
+}
+
 # --- Tier keys -------------------------------------------------------------
 # Default key policy (account root + IAM delegation); per-role grants live below.
 
@@ -207,6 +214,14 @@ resource "aws_iam_role_policy" "vend_write" {
         Resource = "${local.ssm_param_arn}/runtime/vended-token"
       },
       {
+        # Dedicated token, not a wider repos: on the vended-token above —
+        # #51 keeps infra excluded from that one on purpose (ADR-0024).
+        Sid      = "WriteInfraDispatchTokenOnly"
+        Effect   = "Allow"
+        Action   = "ssm:PutParameter"
+        Resource = "${local.ssm_param_arn}/runtime/infra-dispatch-token"
+      },
+      {
         Sid      = "EncryptRuntimeTier"
         Effect   = "Allow"
         Action   = ["kms:Encrypt", "kms:GenerateDataKey"]
@@ -291,6 +306,50 @@ resource "aws_iam_role_policy" "pr_review_openrouter_read" {
         Effect   = "Allow"
         Action   = "ssm:GetParameter"
         Resource = "${local.ssm_param_arn}/runtime/openrouter-api-key"
+      },
+      {
+        Sid      = "DecryptRuntimeTier"
+        Effect   = "Allow"
+        Action   = "kms:Decrypt"
+        Resource = aws_kms_key.runtime_secrets.arn
+      },
+    ]
+  })
+}
+
+# --- GCP Cloud Run dispatch consumer (OIDC-assumed, ADR-0024, #191) --------
+
+# sub pinned to gcp/'s SA numeric unique_id, never its email — ADR-0010's
+# #163 ID-pinning discipline (docs/BOOTSTRAP.md §17 populates it).
+resource "aws_iam_role" "dispatch_read" {
+  name = "infra-dispatch-read"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Federated = aws_iam_openid_connect_provider.google.arn }
+      Action    = "sts:AssumeRoleWithWebIdentity"
+      Condition = {
+        StringEquals = {
+          "accounts.google.com:aud" = "sts.amazonaws.com"
+          "accounts.google.com:sub" = var.gcp_dispatch_service_account_unique_id
+        }
+      }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "dispatch_read" {
+  name = "read-infra-dispatch-token"
+  role = aws_iam_role.dispatch_read.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid      = "ReadInfraDispatchTokenOnly"
+        Effect   = "Allow"
+        Action   = "ssm:GetParameter"
+        Resource = "${local.ssm_param_arn}/runtime/infra-dispatch-token"
       },
       {
         Sid      = "DecryptRuntimeTier"
