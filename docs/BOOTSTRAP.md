@@ -552,6 +552,36 @@ Anthropic key is parked in Actions secrets — the standing-credential
 class ADR-0010 exists to eliminate stays eliminated by simply not
 building the CI leg ahead of its consumer.
 
+## 15. Neon Postgres account and management API key
+
+**Additive** (#204, ADR-0023): Neon joined the stack as the hosted Postgres
+store dotfiles ADR-0046 names for per-role agent memory (dotfiles#602).
+**Bootstrap only** — no project, database, or role here; this section just
+gets the provider a management credential to plan against, same shape as
+§11's B2 bootstrap.
+
+- **Create the account** at neon.tech; email + password go in iCloud
+  Passwords, sign-in verification via authenticator app (the login triad).
+  Enable MFA if offered. Recovery codes → the Bitwarden vault (ADR-0016's
+  split).
+- **Create the management API key** — Neon Console → Account settings →
+  API keys → Create new API key. Neon's account-level keys aren't
+  capability-scoped the way B2's are (no read-only/bucket-restricted
+  option), so this key is full-account by construction; that's priced into
+  ADR-0023 as the accepted shape, not a choice made here.
+- **Populate the SSM parameter** (§4's loop shape — the printed key value):
+
+  ```sh
+  for param in neon-api-key; do ...; done
+  ```
+
+  `/infra/neon-api-key`, `SecureString` under `alias/infra-secrets`,
+  adopted by `ssm.tf`. Local apply fetches it via
+  `with-infra-secrets.sh` and remaps it to the provider's native
+  `NEON_API_KEY` name; CI's `read-ssm-params` wiring is deferred to #602 —
+  the empty, lazy `provider "neon" {}` block plans clean without it
+  (`versions.tf`).
+
 ## What's still manual, permanently
 
 Not a bootstrap-only list — these stay manual forever, for reasons
@@ -579,6 +609,10 @@ tooling gaps:
   and the management application key; "master key still unrecorded,
   management key still the only tofu credential" joins the same periodic
   audit.
+- The Neon account scaffolding (§15, ADR-0023) — account creation, MFA,
+  and the management API key; the §6 community-provider decay watch
+  (provider health, since the key itself carries no expiry) joins the same
+  periodic audit.
 - The elevated Keychain items' read prompt — the fence the containment
   invariant rests on, and one "Always Allow" click (or a confirm setting
   that skips the keychain password) disables it silently: found live in
