@@ -1,0 +1,3 @@
+# gcp/dispatch/Dockerfile is a run-to-exit Cloud Run Job (ADR-0024, #191),
+# not a long-lived server — no process to poll a HEALTHCHECK against.
+DS-0026

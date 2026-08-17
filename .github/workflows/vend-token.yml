@@ -2,6 +2,10 @@ name: Vend scoped token
 
 # Publishes a narrowly-scoped, rotating GitHub token to SSM's /runtime/vended-token
 # (#124, ADR-0010) so a local/agent shell never touches the App's raw private key.
+# Also publishes a second, narrower token to /runtime/infra-dispatch-token —
+# actions:write on infra only — for the GCP dispatch job to re-trigger this
+# workflow (ADR-0024, #191). Deliberately not the same token: #51 keeps infra
+# excluded from the vended-token's repo list on purpose.
 on:
   schedule:
     # Best-effort, not a hard guarantee — GitHub's schedule: trigger can lag
@@ -90,3 +94,27 @@ jobs:
           version="$(aws ssm put-parameter --cli-input-json "file://$tmp" \
             --output text --query Version)"
           echo "Published a fresh token (parameter version ${version}), expires ${expires_at}."
+
+      # Narrower than the vended-token above: actions:write only, infra only —
+      # #51's containment stays untouched (ADR-0024). The dispatch job only
+      # needs a bearer token, so no {token, expires_at} envelope here.
+      - name: Mint infra dispatch token
+        id: dispatch-token
+        uses: ./.github/actions/mint-app-token
+        with:
+          client-id: ${{ vars.GH_APP_CLIENT_ID }}
+          private-key: ${{ steps.ssm-key.outputs.GH_APP_PRIVATE_KEY }}
+          repositories: infra
+          permission-actions: write
+          skip-token-revoke: "true"
+
+      - name: Publish token to /runtime/infra-dispatch-token
+        env:
+          DISPATCH_TOKEN: ${{ steps.dispatch-token.outputs.token }}
+        run: |
+          echo "::add-mask::$DISPATCH_TOKEN"
+          aws ssm put-parameter --name /runtime/infra-dispatch-token \
+            --type SecureString --key-id alias/runtime-secrets \
+            --overwrite --value "$DISPATCH_TOKEN" \
+            --description "actions:write-on-infra-only dispatch token — created by vend-token.yml (ADR-0024, #191)"
+          echo "Published a fresh infra dispatch token."

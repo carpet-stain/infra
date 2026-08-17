@@ -28,3 +28,19 @@
 # belong to — not secret, but an account identifier, so it's env-sourced
 # like every other one here rather than a literal in dns.tf.
 export TF_VAR_cloudflare_account_id=
+
+# GCP project hosting the vend-token dispatch job (ADR-0024, #191) — not
+# secret, account-identifying, same category as the Cloudflare id above.
+# `just tofu-gcp` needs both; `google_region` defaults to us-central1 if left
+# unset. GOOGLE_APPLICATION_CREDENTIALS isn't set here — auth rides
+# `gcloud auth application-default login` (docs/BOOTSTRAP.md §17).
+export TF_VAR_google_project_id=
+export TF_VAR_google_region=
+
+# Resolved only after gcp/'s and iam/'s first bootstrap applies
+# (docs/BOOTSTRAP.md §17's chicken-and-egg ordering) — not secret (a
+# numeric SA id, a role ARN, and an image tag grant nothing by
+# themselves), left blank until then.
+export TF_VAR_gcp_dispatch_service_account_unique_id=
+export TF_VAR_aws_dispatch_role_arn=
+export TF_VAR_dispatch_image=

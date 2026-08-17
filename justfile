@@ -43,6 +43,13 @@ tofu-iam *args:
 tofu-apply *args:
     scripts/with-infra-secrets.sh --gh-admin tofu apply {{ args }}
 
+# gcp/ (ADR-0024, #191): no AWS IAM/KMS in this module, so the routine
+# --bootstrap-free wrapper is enough for the R2 backend creds — same
+# Keychain prompt as `tofu`. GCP auth rides gcloud's Application Default
+# Credentials (docs/BOOTSTRAP.md §17), not this script.
+tofu-gcp *args:
+    scripts/with-infra-secrets.sh tofu -chdir=gcp {{ args }}
+
 # List recipes when invoked with no arguments.
 _default:
     @just --list

@@ -45,9 +45,17 @@ verbatim.
 - `iam/` — the bootstrap-only root module (ADR-0010): OIDC provider, the
   per-consumer IAM roles, the two tier KMS keys. Own state (second key in
   the same R2 bucket), applied only via `just tofu-iam` with the bootstrap
-  key — never by CI, so no CI role ever holds `iam:*`/`kms:Put*`. The one
-  legitimate directory (see #121's layout comment); AWS resources otherwise
-  land as root-level files.
+  key — never by CI, so no CI role ever holds `iam:*`/`kms:Put*`. AWS
+  resources that aren't bootstrap-only land as root-level files instead
+  (see #121's layout comment).
+- `gcp/` — the GCP root module (ADR-0024, #191): the Cloud Scheduler job,
+  the dispatch Cloud Run Job, and their service accounts. Own state (third
+  key, same R2 bucket), applied only via `just tofu-gcp` — no GCP-
+  authenticated CI identity exists yet, so this stays local-apply-only like
+  `iam/`, for a different reason (no CI wiring built, not an escalation
+  fence). `gcp/dispatch/` is the Job's container source (Dockerfile +
+  entrypoint.sh), built and pushed by hand (docs/BOOTSTRAP.md §17) — Tofu
+  references the image tag, it doesn't build it.
 - `.github/actions/mint-app-token/` — composite action minting scoped
   App-installation tokens for CI (#32), used by `tofu-plan.yml`,
   `tofu-apply.yml`, `tofu-apply-dispatch.yml`, `tofu-drift.yml`, and
@@ -58,7 +66,10 @@ verbatim.
 - `.github/workflows/` — `tofu-plan.yml`/`tofu-apply.yml` are the
   saved-plan-on-merge pipeline (ADR-0003); `vend-token.yml` publishes a
   scoped, rotating token to SSM's `/runtime/vended-token` for local/agent
-  shells (#51/ADR-0008 for the vending model, #124/ADR-0010 for the store).
+  shells (#51/ADR-0008 for the vending model, #124/ADR-0010 for the store),
+  plus a second, narrower `/runtime/infra-dispatch-token` (actions:write on
+  infra only) that `gcp/`'s Cloud Run Job reads to re-trigger this workflow
+  reliably (ADR-0024, #191).
 - `docs/adr/` — architecture decisions (`.adr-dir` points here).
 - `scripts/` — `with-infra-secrets.sh` (the Keychain-gated SSM fetch every
   local tofu run rides), `new-adr.sh`, `check-envrc-local-example.sh`,
@@ -253,17 +264,18 @@ two independent fences. The audit invariant (ADR-0010 as amended by #126):
 **no silently-readable local identity resolves `kms:Decrypt` on
 `alias/infra-secrets`**, and local and CI identities share no credential.
 
-| Identity                            | Kind      | Surface                            | Held as                                                                                       |
-| ----------------------------------- | --------- | ---------------------------------- | --------------------------------------------------------------------------------------------- |
-| `infra-plan-read`                   | OIDC role | `/infra/*` read                    | no credential — assumed per job (plan/drift)                                                  |
-| `infra-apply`                       | OIDC role | `/infra/*` read/write              | no credential — assumed per job (apply/dispatch)                                              |
-| `infra-vend-write`                  | OIDC role | App-key read, vended-token write   | no credential — assumed per job (vend)                                                        |
-| `infra-local-apply`                 | IAM user  | `/infra/*` read/write              | Keychain `infra-aws-local-apply`, prompt-gated (no `-A`)                                      |
-| `infra-local-read`                  | IAM user  | `/runtime/*` read                  | Keychain (dotfiles' `infra-aws-local-read`), silent (`-A`)                                    |
-| `infra-bootstrap`                   | IAM user  | IAM/KMS/SSM trust roots            | Keychain `infra-aws-bootstrap`, prompt-gated, deactivated                                     |
-| `infra-console-admin`               | IAM user  | console `*:*`, MFA-enforced        | no access key — console password + MFA in iCloud, recovery codes in Bitwarden (ADR-0015/0016) |
-| `project-starter-template-e2e-read` | OIDC role | vended-token read (single param)   | no credential — assumed per job, cross-repo consumer (#147)                                   |
-| `pr-review-openrouter-read`         | OIDC role | OpenRouter-key read (single param) | no credential — assumed per job, shared cross-repo consumer (#220)                            |
+| Identity                            | Kind      | Surface                                  | Held as                                                                                         |
+| ----------------------------------- | --------- | ---------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `infra-plan-read`                   | OIDC role | `/infra/*` read                          | no credential — assumed per job (plan/drift)                                                    |
+| `infra-apply`                       | OIDC role | `/infra/*` read/write                    | no credential — assumed per job (apply/dispatch)                                                |
+| `infra-vend-write`                  | OIDC role | App-key read, vended-token write         | no credential — assumed per job (vend)                                                          |
+| `infra-local-apply`                 | IAM user  | `/infra/*` read/write                    | Keychain `infra-aws-local-apply`, prompt-gated (no `-A`)                                        |
+| `infra-local-read`                  | IAM user  | `/runtime/*` read                        | Keychain (dotfiles' `infra-aws-local-read`), silent (`-A`)                                      |
+| `infra-bootstrap`                   | IAM user  | IAM/KMS/SSM trust roots                  | Keychain `infra-aws-bootstrap`, prompt-gated, deactivated                                       |
+| `infra-console-admin`               | IAM user  | console `*:*`, MFA-enforced              | no access key — console password + MFA in iCloud, recovery codes in Bitwarden (ADR-0015/0016)   |
+| `project-starter-template-e2e-read` | OIDC role | vended-token read (single param)         | no credential — assumed per job, cross-repo consumer (#147)                                     |
+| `pr-review-openrouter-read`         | OIDC role | OpenRouter-key read (single param)       | no credential — assumed per job, shared cross-repo consumer (#220)                              |
+| `infra-dispatch-read`               | OIDC role | infra-dispatch-token read (single param) | no credential — assumed by gcp/'s Cloud Run Job via GCP-to-AWS OIDC federation (ADR-0024, #191) |
 
 Daily console work runs as `infra-console-admin` (console-only `*:*`
 admin, MFA enforced by policy, no programmatic key — ADR-0015); root is
