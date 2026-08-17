@@ -253,16 +253,17 @@ two independent fences. The audit invariant (ADR-0010 as amended by #126):
 **no silently-readable local identity resolves `kms:Decrypt` on
 `alias/infra-secrets`**, and local and CI identities share no credential.
 
-| Identity                            | Kind      | Surface                          | Held as                                                                                       |
-| ----------------------------------- | --------- | -------------------------------- | --------------------------------------------------------------------------------------------- |
-| `infra-plan-read`                   | OIDC role | `/infra/*` read                  | no credential — assumed per job (plan/drift)                                                  |
-| `infra-apply`                       | OIDC role | `/infra/*` read/write            | no credential — assumed per job (apply/dispatch)                                              |
-| `infra-vend-write`                  | OIDC role | App-key read, vended-token write | no credential — assumed per job (vend)                                                        |
-| `infra-local-apply`                 | IAM user  | `/infra/*` read/write            | Keychain `infra-aws-local-apply`, prompt-gated (no `-A`)                                      |
-| `infra-local-read`                  | IAM user  | `/runtime/*` read                | Keychain (dotfiles' `infra-aws-local-read`), silent (`-A`)                                    |
-| `infra-bootstrap`                   | IAM user  | IAM/KMS/SSM trust roots          | Keychain `infra-aws-bootstrap`, prompt-gated, deactivated                                     |
-| `infra-console-admin`               | IAM user  | console `*:*`, MFA-enforced      | no access key — console password + MFA in iCloud, recovery codes in Bitwarden (ADR-0015/0016) |
-| `project-starter-template-e2e-read` | OIDC role | vended-token read (single param) | no credential — assumed per job, cross-repo consumer (#147)                                   |
+| Identity                            | Kind      | Surface                            | Held as                                                                                       |
+| ----------------------------------- | --------- | ---------------------------------- | --------------------------------------------------------------------------------------------- |
+| `infra-plan-read`                   | OIDC role | `/infra/*` read                    | no credential — assumed per job (plan/drift)                                                  |
+| `infra-apply`                       | OIDC role | `/infra/*` read/write              | no credential — assumed per job (apply/dispatch)                                              |
+| `infra-vend-write`                  | OIDC role | App-key read, vended-token write   | no credential — assumed per job (vend)                                                        |
+| `infra-local-apply`                 | IAM user  | `/infra/*` read/write              | Keychain `infra-aws-local-apply`, prompt-gated (no `-A`)                                      |
+| `infra-local-read`                  | IAM user  | `/runtime/*` read                  | Keychain (dotfiles' `infra-aws-local-read`), silent (`-A`)                                    |
+| `infra-bootstrap`                   | IAM user  | IAM/KMS/SSM trust roots            | Keychain `infra-aws-bootstrap`, prompt-gated, deactivated                                     |
+| `infra-console-admin`               | IAM user  | console `*:*`, MFA-enforced        | no access key — console password + MFA in iCloud, recovery codes in Bitwarden (ADR-0015/0016) |
+| `project-starter-template-e2e-read` | OIDC role | vended-token read (single param)   | no credential — assumed per job, cross-repo consumer (#147)                                   |
+| `pr-review-openrouter-read`         | OIDC role | OpenRouter-key read (single param) | no credential — assumed per job, shared cross-repo consumer (#220)                            |
 
 Daily console work runs as `infra-console-admin` (console-only `*:*`
 admin, MFA enforced by policy, no programmatic key — ADR-0015); root is
@@ -307,6 +308,20 @@ filed as a follow-up once it does, shaped like
 `project-starter-template-e2e-read` below. No Anthropic key lives in
 Actions secrets in the meantime. Rotate ≤1yr by policy (the key itself
 carries no expiry) — joins the periodic audit list above.
+
+`/runtime/openrouter-api-key` (#220) is a fifth: the shared key
+`pr-code-review.yml` (agents, dotfiles) reads for its advisory LLM review,
+hand-published via the bootstrap key (`docs/BOOTSTRAP.md` §16) — like §12's
+B2 client key, not §13/14's console-admin write, since it's one shared key
+rather than a credential minted per agent account. Fetch path is a
+dedicated OIDC role, `pr-review-openrouter-read` (`iam/main.tf`), trusting
+both repos' `pr-code-review.yml` `pull_request` subs and granted
+`ssm:GetParameter` on this one parameter — the first CI OIDC consumer of
+the runtime tier outside `infra-vend-write`. dotfiles' OIDC sub still needs
+flipping to the ID-pinned form before its trust condition matches (#220);
+the consuming workflow changes are separate (`agents#16`, `dotfiles#626`).
+Carries no built-in expiry — rotate ≤1yr by policy, joins the periodic
+audit list above.
 
 ### CI secrets and variables
 
