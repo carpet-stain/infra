@@ -88,29 +88,47 @@ per-service ADR supersedes only its own decision, never this framework.
 
 ### 3. Category playbook
 
-| Category                   | Default                                       | Alternate                       | Never                                              | Exit path               |
-| -------------------------- | --------------------------------------------- | ------------------------------- | -------------------------------------------------- | ----------------------- |
-| Compute (steady)           | Hetzner (k3s)                                 | Any VPS                         | Hyperscaler VMs at list price                      | Redeploy manifests      |
-| Compute (batch/serverless) | Cloud Run Jobs                                | Fly.io, any OCI PaaS            | Lambda-style signatures, Beanstalk                 | `docker push`           |
-| Kubernetes                 | k3s self-managed                              | GKE (if paying for ops)         | EKS/AKS at personal scale                          | Flux repo re-point      |
-| Relational DB              | Neon                                          | Supabase (PG only), self-host   | Aurora / proprietary extensions                    | `pg_dump`               |
-| Object storage             | Cloudflare R2                                 | Backblaze B2                    | S3 with egress exposure                            | `rclone`                |
-| Queues/jobs                | Postgres (SKIP LOCKED / pgmq / River)         | NATS self-hosted, Redis Streams | SQS/SNS/EventBridge, Pub/Sub                       | Table export / redeploy |
-| Email (transactional)      | SES or Resend, templates in repo              | Postmark                        | Vendor template builders                           | Swap API key            |
-| Web analytics              | Plausible/Umami self-hosted                   | —                               | GA4                                                | It's yours              |
-| Product analytics          | PostHog (OSS exit path)                       | Self-hosted PostHog             | Proprietary-only vendors                           | Documented self-host    |
-| Warehouse/OLAP             | DuckDB over Parquet in R2                     | ClickHouse self-hosted          | BigQuery below ~10 TB                              | Files you own           |
-| Frontend hosting           | Cloudflare Pages (Astro/static)               | Netlify, GH Pages               | Vercel + Next server features                      | DNS change              |
-| IAM / CI identity          | AWS IAM + GitHub OIDC roles (ADR-0010)        | —                               | Long-lived static keys                             | N/A (spine)             |
-| Secrets/KMS                | AWS SSM Parameter Store + KMS (ADR-0010/0013) | —                               | In-repo SOPS; vendor secret UIs as source of truth | Export params / re-key  |
-| Observability              | OTel → Grafana/Loki/Tempo/Prometheus          | Grafana Cloud, Honeycomb        | CloudWatch as primary                              | Re-point exporter       |
-| Alerting                   | Alertmanager + ntfy/Pushover; Healthchecks.io | Grafana alerting                | CloudWatch Alarms                                  | Config in git           |
+| Category                   | Default                                                             | Alternate                       | Never                                              | Exit path                          |
+| -------------------------- | ------------------------------------------------------------------- | ------------------------------- | -------------------------------------------------- | ---------------------------------- |
+| Compute (steady)           | Hetzner (k3s)                                                       | Any VPS                         | Hyperscaler VMs at list price                      | Redeploy manifests                 |
+| Compute (batch/serverless) | Cloud Run Jobs                                                      | Fly.io, any OCI PaaS            | Lambda-style signatures, Beanstalk                 | `docker push`                      |
+| Kubernetes                 | k3s self-managed                                                    | GKE (if paying for ops)         | EKS/AKS at personal scale                          | Flux repo re-point                 |
+| Relational DB              | Neon                                                                | Supabase (PG only), self-host   | Aurora / proprietary extensions                    | `pg_dump`                          |
+| Object storage             | Cloudflare R2                                                       | Backblaze B2                    | S3 with egress exposure                            | `rclone`                           |
+| Queues/jobs                | Postgres, pinned always-on Neon branch (SKIP LOCKED / pgmq / River) | NATS self-hosted, Redis Streams | SQS/SNS/EventBridge, Pub/Sub                       | Table export / redeploy            |
+| Email (transactional)      | SES or Resend, templates in repo                                    | Postmark                        | Vendor template builders                           | Swap API key                       |
+| Web analytics              | Umami Cloud                                                         | Self-hosted Umami/Plausible     | GA4                                                | Self-host re-point (same OSS tool) |
+| Product analytics          | PostHog (OSS exit path)                                             | Self-hosted PostHog             | Proprietary-only vendors                           | Documented self-host               |
+| Warehouse/OLAP             | DuckDB over Parquet in R2                                           | ClickHouse self-hosted          | BigQuery below ~10 TB                              | Files you own                      |
+| Frontend hosting           | Cloudflare Pages (Astro/static)                                     | Netlify, GH Pages               | Vercel + Next server features                      | DNS change                         |
+| IAM / CI identity          | AWS IAM + GitHub OIDC roles (ADR-0010)                              | —                               | Long-lived static keys                             | N/A (spine)                        |
+| Secrets/KMS                | AWS SSM Parameter Store + KMS (ADR-0010/0013)                       | —                               | In-repo SOPS; vendor secret UIs as source of truth | Export params / re-key             |
+| Observability              | OTel → Grafana/Loki/Tempo/Prometheus                                | Grafana Cloud, Honeycomb        | CloudWatch as primary                              | Re-point exporter                  |
+| Alerting                   | Alertmanager + ntfy/Pushover; Healthchecks.io                       | Grafana alerting                | CloudWatch Alarms                                  | Config in git                      |
 
 The Warehouse/OLAP "Never" line is an absolute, not a threshold — personal
 scale doesn't approach 10 TB, so it can't fire the Consequences "revisit"
 trigger. DuckDB over Parquet isn't a managed-warehouse substitute; it's a file
 convention (query engine over files you already own), chosen because no
 volume at this scale justifies renting a warehouse.
+
+Queues/jobs stays on Postgres, but not the same scale-to-zero Neon branch the
+Relational DB default uses: polling / `SKIP LOCKED` needs a long-lived
+connection, which fights suspend-on-idle. The fix is a Neon setting, not a
+different service — pin the queue table's branch to always-on (a small fixed
+cost) and keep the single-vendor, `pg_dump`-exits-everything simplicity
+(#185, N3).
+
+Web analytics moved from self-hosted to Umami Cloud. Rule 2.5 already treats
+hosting as reversible (exporters/instrumentation point anywhere), so
+self-hosting it bought little lock-in reduction for real ops load — one more
+service to patch and back up on a maintainer already running k3s, the LGTM
+stack, and PostHog. Product analytics was already hosted-by-default
+(PostHog Cloud, self-host only as the Alternate); this brings web analytics
+in line rather than adding a second self-hosted analytics service. The OTel/
+Grafana/Loki/Tempo/Prometheus stack stays self-hosted — it's the observability
+spine every other service's exporters point at, not a swappable satellite
+(#185, N4).
 
 ### 4. When a Platform-class (proprietary) service is allowed
 
@@ -235,5 +253,9 @@ change, or an env var.
   threshold to watch — or if a free-tier change forces a paid migration the
   framework's own §6 check should have caught first. §5 is a forcing function
   only while it's actually run — `scripts/new-adr.sh` now stamps an
-  integration ADR with the checklist as fields to answer, not prose to skip
-  (#185).
+  integration ADR with the checklist as fields to answer, not prose to skip.
+- §3's two playbook-default changes flagged for a reviewed decision
+  (#185, N3/N4) are both resolved: Queues/jobs keeps Postgres/Neon but pins
+  the queue branch always-on instead of switching services; Web analytics
+  moves to Umami Cloud, leaving self-hosted ops load on the LGTM signal spine
+  only, not two analytics services on top of it.
