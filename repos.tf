@@ -138,8 +138,8 @@ locals {
 
   # Deliberation-agent machine accounts — see #172/ADR-0035.
   collaborators = {
-    "carpet-stain-backlog-manager" = { permission = "read" }
-    "carpet-stain-plan-reviewer"   = { permission = "read" }
+    "carpet-stain-backlog-manager" = { permission = "pull" }
+    "carpet-stain-plan-reviewer"   = { permission = "pull" }
   }
 
   labels = {
