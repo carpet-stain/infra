@@ -465,19 +465,24 @@ key needs rotating; nothing tofu-managed depends on its value.
 ## 13. The two deliberation-agent PATs
 
 **Additive** (#173, dotfiles#540 Phase 1): `backlog-manager` and
-`plan-reviewer` post as themselves via their own fine-grained PATs,
-fetched locally from SSM (Phase 2 is unattended, so the read has to be
-silent). Prerequisite: the two machine accounts exist with their
-`repos.tf` collaborator grants accepted (infra#172).
+`plan-reviewer` post as themselves via their own classic PATs, fetched
+locally from SSM (Phase 2 is unattended, so the read has to be silent).
+Prerequisite: the two machine accounts exist with their `repos.tf`
+collaborator grants accepted (infra#172).
+
+**Classic, not fine-grained** (#214): dotfiles#540's live write test
+proved fine-grained PATs unimplementable here — a fine-grained token
+can't select a repo where the account is only a collaborator, a
+documented GitHub limitation, not a config error. A classic token has no
+such restriction. Both machine accounts are `read` collaborators
+(ADR-0021), so effective rights stay bounded by that role plus branch
+protection regardless of token scope — there's no fine-grained-style
+per-agent scope split to preserve.
 
 **Mint each PAT while signed into that machine account** (Settings →
-Developer settings → Fine-grained tokens → Generate new token), scoped to
-the managed repos in `local.repos`, ≤1yr expiry:
-
-- `carpet-stain-backlog-manager` → Issues: Read & write, Pull requests:
-  Read & write. **No `Contents`** — the role never pushes.
-- `carpet-stain-plan-reviewer` → Pull requests: Read & write (review/
-  comment needs write on the PR conversation, not just read).
+Developer settings → Tokens (classic) → Generate new token (classic)),
+scope `public_repo`, ~1yr expiry. `public_repo` alone: all managed repos
+are public, and the collaborator role does the actual bounding.
 
 **Publish each to its own `/runtime/*` parameter**, not `/infra/*` —
 `infra-local-read`'s existing `/runtime/*` wildcard already covers the
@@ -492,7 +497,7 @@ Store → Create parameter** —
 - Type: `SecureString`
 - KMS key: `alias/runtime-secrets` (the default `aws/ssm` key 400s
   `infra-local-read`'s decrypt — same trap as §4)
-- Value: the fine-grained PAT just minted
+- Value: the classic PAT just minted
 
 Verify with a decrypting read as `infra-local-read`
 (`aws ssm get-parameter --name /runtime/backlog-manager-pat
@@ -500,7 +505,7 @@ Verify with a decrypting read as `infra-local-read`
 either as live. **Not tofu-adopted** — `/runtime/*` stays outside tofu
 state by design (`ssm.tf`'s header comment, ADR-0010), so these join the
 vended token and §12's client key as permanently-manual values, not a
-`ssm.tf` entry. Set a rotation reminder for each PAT's ≤1yr expiry and
+`ssm.tf` entry. Set a rotation reminder for each PAT's ~1yr expiry and
 add both to the periodic audit alongside the other manual credentials
 below; re-run this section whenever either needs rotating.
 
@@ -516,7 +521,7 @@ Prerequisite: the two machine accounts from §13 exist.
 Settings → API keys → Create Key), one per agent, named for the agent in
 the console UI (`backlog-manager`, `plan-reviewer`) so usage-API
 segmentation and this runbook agree on which key is whose. Unlike a
-GitHub fine-grained PAT, an Anthropic API key isn't minted "as" a
+GitHub PAT, an Anthropic API key isn't minted "as" a
 specific login — it's a workspace-level credential — and it carries no
 built-in expiry, so there's no forcing function pushing rotation; treat
 it as ≤1yr by policy, same cadence as §13's PATs, and rely on the
