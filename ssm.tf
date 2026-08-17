@@ -30,13 +30,6 @@ locals {
   }
 }
 
-# Temporary adoption of the hand-created Neon param (docs/BOOTSTRAP.md §15)
-# — the repo's adopt-then-delete convention; remove once applied.
-import {
-  to = aws_ssm_parameter.this["neon-api-key"]
-  id = "/infra/neon-api-key"
-}
-
 resource "aws_ssm_parameter" "this" {
   for_each = local.infra_parameters
 
