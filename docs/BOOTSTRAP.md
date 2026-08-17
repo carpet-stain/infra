@@ -504,6 +504,54 @@ vended token and §12's client key as permanently-manual values, not a
 add both to the periodic audit alongside the other manual credentials
 below; re-run this section whenever either needs rotating.
 
+## 14. The two agent Anthropic API keys
+
+**Additive** (#205, 1:1 with §13's roster): `backlog-manager` and
+`plan-reviewer` authenticate to Anthropic under their own API key so
+dotfiles#612 can attribute hosted spend per agent on the usage API, and
+neither shares the other's — or a third, unnamed — standing key.
+Prerequisite: the two machine accounts from §13 exist.
+
+**Mint each key in the Anthropic Console** (console.anthropic.com →
+Settings → API keys → Create Key), one per agent, named for the agent in
+the console UI (`backlog-manager`, `plan-reviewer`) so usage-API
+segmentation and this runbook agree on which key is whose. Unlike a
+GitHub fine-grained PAT, an Anthropic API key isn't minted "as" a
+specific login — it's a workspace-level credential — and it carries no
+built-in expiry, so there's no forcing function pushing rotation; treat
+it as ≤1yr by policy, same cadence as §13's PATs, and rely on the
+periodic audit rather than a token expiry to catch a stale one.
+
+**Publish each to its own `/runtime/*` parameter**, the same
+`infra-console-admin` console write as §13 (Systems Manager → Parameter
+Store → Create parameter):
+
+- Name: `/runtime/backlog-manager-anthropic-key` or
+  `/runtime/plan-reviewer-anthropic-key`
+- Type: `SecureString`
+- KMS key: `alias/runtime-secrets`
+- Value: the API key just minted
+
+Verify with a decrypting read as `infra-local-read` before treating
+either as live, same as §13. **Not tofu-adopted**, same reasoning as §13
+— these join the PATs as permanently-manual `/runtime/*` values.
+
+**Fetch path, local:** `infra-local-read`'s existing `/runtime/*`
+wildcard already covers both parameters — no new IAM grant.
+
+**Fetch path, CI (dotfiles#596):** not wired yet. The hosted agent
+runtime dotfiles#596 defines doesn't exist yet, and ADR-0010's ID-pinning
+discipline (`iam/main.tf`'s header comment) forbids granting a repo-wide
+or org-wide OIDC sub wildcard just to have something in place early — a
+role has to pin the exact `sub` of a real workflow. Once #596's ADR firms
+and names the consuming repo/workflow, add a role shaped like
+`pst_e2e_read` (`iam/main.tf`): OIDC-assumed, ID-pinned `sub`, granted
+`ssm:GetParameter` on the two key ARNs by name (not a `/runtime/*`
+wildcard) plus `kms:Decrypt` on `alias/runtime-secrets`. Until then, no
+Anthropic key is parked in Actions secrets — the standing-credential
+class ADR-0010 exists to eliminate stays eliminated by simply not
+building the CI leg ahead of its consumer.
+
 ## What's still manual, permanently
 
 Not a bootstrap-only list — these stay manual forever, for reasons
