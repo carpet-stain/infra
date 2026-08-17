@@ -291,12 +291,14 @@ minted and published by hand via the bootstrap key, never tofu-adopted
 (`docs/BOOTSTRAP.md` §12).
 
 `/runtime/backlog-manager-pat` and `/runtime/plan-reviewer-pat`
-(dotfiles#540 Phase 1, #173) are two more — each a fine-grained PAT minted
-while signed into that machine account, published by `infra-console-admin`
-via the AWS console (it holds no access key), never tofu-adopted
-(`docs/BOOTSTRAP.md` §13). `infra-local-read`'s existing `/runtime/*`
-wildcard already covers reading them, no new grant. Rotate ≤1yr (PAT
-expiry) — joins the periodic audit list above.
+(dotfiles#540 Phase 1, #173) are two more — each a classic PAT
+(`public_repo` scope, #214 — fine-grained can't select a repo where the
+account is only a collaborator) minted while signed into that machine
+account, published by `infra-console-admin` via the AWS console (it holds
+no access key), never tofu-adopted (`docs/BOOTSTRAP.md` §13).
+`infra-local-read`'s existing `/runtime/*` wildcard already covers
+reading them, no new grant. Rotate ~1yr (PAT expiry) — joins the periodic
+audit list above.
 
 `/runtime/backlog-manager-anthropic-key` and
 `/runtime/plan-reviewer-anthropic-key` (dotfiles#612's per-agent spend
