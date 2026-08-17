@@ -462,6 +462,48 @@ second permanently-manual value alongside the vended token, not a
 `ssm.tf` entry with `ignore_changes`. Re-run this section whenever the
 key needs rotating; nothing tofu-managed depends on its value.
 
+## 13. The two deliberation-agent PATs
+
+**Additive** (#173, dotfiles#540 Phase 1): `backlog-manager` and
+`plan-reviewer` post as themselves via their own fine-grained PATs,
+fetched locally from SSM (Phase 2 is unattended, so the read has to be
+silent). Prerequisite: the two machine accounts exist with their
+`repos.tf` collaborator grants accepted (infra#172).
+
+**Mint each PAT while signed into that machine account** (Settings →
+Developer settings → Fine-grained tokens → Generate new token), scoped to
+the managed repos in `local.repos`, ≤1yr expiry:
+
+- `carpet-stain-backlog-manager` → Issues: Read & write, Pull requests:
+  Read & write. **No `Contents`** — the role never pushes.
+- `carpet-stain-plan-reviewer` → Pull requests: Read & write (review/
+  comment needs write on the PR conversation, not just read).
+
+**Publish each to its own `/runtime/*` parameter**, not `/infra/*` —
+`infra-local-read`'s existing `/runtime/*` wildcard already covers the
+read, so no new IAM grant is needed. Unlike §12's client key, neither the
+bootstrap key nor a CLI session is the right tool here: this is exactly
+the kind of one-off admin write `infra-console-admin` exists for
+(ADR-0015), and it holds no access key by design, so do it in the AWS
+web console, signed in as that user (MFA): **Systems Manager → Parameter
+Store → Create parameter** —
+
+- Name: `/runtime/backlog-manager-pat` or `/runtime/plan-reviewer-pat`
+- Type: `SecureString`
+- KMS key: `alias/runtime-secrets` (the default `aws/ssm` key 400s
+  `infra-local-read`'s decrypt — same trap as §4)
+- Value: the fine-grained PAT just minted
+
+Verify with a decrypting read as `infra-local-read`
+(`aws ssm get-parameter --name /runtime/backlog-manager-pat
+--with-decryption`, and the same for `plan-reviewer-pat`) before treating
+either as live. **Not tofu-adopted** — `/runtime/*` stays outside tofu
+state by design (`ssm.tf`'s header comment, ADR-0010), so these join the
+vended token and §12's client key as permanently-manual values, not a
+`ssm.tf` entry. Set a rotation reminder for each PAT's ≤1yr expiry and
+add both to the periodic audit alongside the other manual credentials
+below; re-run this section whenever either needs rotating.
+
 ## What's still manual, permanently
 
 Not a bootstrap-only list — these stay manual forever, for reasons
