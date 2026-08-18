@@ -4,7 +4,10 @@ Date: 2026-08-14
 
 ## Status
 
-Accepted
+Superseded by [0025. Repurpose B2 for pg_dump DR of the Neon store](0025-repurpose-b2-for-pg-dump-dr-of-the-neon-store-superseding-adr-0018.md)
+in status only — the versioning/lifecycle/no-delete-key decisions below carry
+forward unchanged; what changes is the object a client pushes (Postgres dump,
+not the retired JSONL store).
 
 ## Context
 
