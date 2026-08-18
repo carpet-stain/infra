@@ -72,13 +72,6 @@ resource "aws_iam_openid_connect_provider" "github" {
   client_id_list = ["sts.amazonaws.com"]
 }
 
-# Same no-thumbprint-needed shape as github above — recognized issuer.
-# gcp/'s dispatch job mints its own ID token here (ADR-0024, #191).
-resource "aws_iam_openid_connect_provider" "google" {
-  url            = "https://accounts.google.com"
-  client_id_list = ["sts.amazonaws.com"]
-}
-
 # --- Tier keys -------------------------------------------------------------
 # Default key policy (account root + IAM delegation); per-role grants live below.
 
@@ -319,20 +312,20 @@ resource "aws_iam_role_policy" "pr_review_openrouter_read" {
 
 # --- GCP Cloud Run dispatch consumer (OIDC-assumed, ADR-0024, #191) --------
 
-# sub pinned to gcp/'s SA numeric unique_id, never its email — ADR-0010's
-# #163 ID-pinning discipline (docs/BOOTSTRAP.md §17 populates it).
+# accounts.google.com is an AWS-native principal — literal string, never an
+# OIDC-provider ARN; sub is gcp/'s SA numeric unique_id (ADR-0024, #191).
 resource "aws_iam_role" "dispatch_read" {
   name = "infra-dispatch-read"
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
       Effect    = "Allow"
-      Principal = { Federated = aws_iam_openid_connect_provider.google.arn }
+      Principal = { Federated = "accounts.google.com" }
       Action    = "sts:AssumeRoleWithWebIdentity"
       Condition = {
         StringEquals = {
-          "accounts.google.com:aud" = "sts.amazonaws.com"
-          "accounts.google.com:sub" = var.gcp_dispatch_service_account_unique_id
+          "accounts.google.com:oaud" = "sts.amazonaws.com"
+          "accounts.google.com:sub"  = var.gcp_dispatch_service_account_unique_id
         }
       }
     }]
