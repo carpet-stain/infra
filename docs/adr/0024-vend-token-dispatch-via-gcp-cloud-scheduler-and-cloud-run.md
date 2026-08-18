@@ -6,6 +6,8 @@ Date: 2026-08-17
 
 Accepted
 
+Trust-policy mechanics corrected in place — see the Amendment at the end.
+
 ## Context
 
 `vend-token.yml` publishes the rotating GitHub App token consumed by local
@@ -206,3 +208,63 @@ can't provide one for itself.
 
 Refs: #191, #51, #98, #215 (closed moot), ADR-0010, ADR-0014,
 dotfiles#619, dotfiles#453.
+
+## Amendment — #191 (2026-08-18): accounts.google.com is a native principal, not a custom OIDC provider
+
+Live testing after this ADR's PR merged found the Decision's AWS-side
+mechanics wrong in two ways — both AWS-STS-specific, neither visible from
+Terraform validation or a plan (no live GCP project existed to test
+against until after merge, per this ADR's own code-only scope).
+
+**What was wrong.** The original `iam/main.tf` created an
+`aws_iam_openid_connect_provider "google"` resource (mirroring the
+`github` provider's shape exactly) and pointed the `dispatch_read` role's
+trust policy `Federated` principal at that resource's ARN. Every live
+attempt failed with `InvalidIdentityToken: The web identity token
+provided could not be validated` — a token-validation failure occurring
+_before_ AWS ever evaluates a trust policy's `Condition` block (confirmed
+via CloudTrail showing no attributable event for the failed calls at all,
+unlike a `Condition`-mismatch `AccessDenied`, which does log).
+
+**Root cause.** `accounts.google.com` is one of a small set of identity
+providers AWS STS recognizes _natively_ (alongside Login with Amazon and
+Facebook) — a different, older mechanism than the generic
+`iam:CreateOpenIDConnectProvider` path GitHub/GitLab/etc. use. AWS's own
+IAM condition-keys reference shows every Google trust-policy example
+using the literal string `"accounts.google.com"` as the `Federated`
+principal, never an OIDC-provider ARN; a real, published Terraform module
+for this exact GCP-service-account-to-AWS pattern (Spotify's
+`gcp-aws-iam-federation-webidentity`) creates no OIDC provider resource
+for Google at all. Registering one anyway doesn't error at apply time —
+Terraform/AWS accept the resource — but STS never matches an incoming
+Google-issued token's issuer to it, so validation fails before condition
+evaluation ever runs.
+
+A second, related gotcha surfaced once the principal was fixed: the
+failure changed from `InvalidIdentityToken` to `AccessDenied: Not
+authorized`, i.e. the _token_ now validated but the _condition_ didn't.
+AWS's native-Google-federation claim mapping is not a 1:1
+`<issuer>:<claim-name>` scheme the way generic OIDC condition keys are:
+the `accounts.google.com:aud` condition key maps to the token's `azp`
+claim when present (falling back to `aud` only if `azp` is absent) — and
+a GCP service-account identity token always carries `azp` (set to the
+same value as `sub`). The fix is `accounts.google.com:oaud`, a separate
+AWS-documented key that maps to the raw `aud` claim regardless of `azp` —
+exactly what Spotify's module uses instead of `:aud`.
+
+**Fix applied** (`iam/main.tf`): removed the `aws_iam_openid_connect_provider
+"google"` resource entirely; `dispatch_read`'s trust policy now sets
+`Principal = { Federated = "accounts.google.com" }` (a literal string) and
+checks `accounts.google.com:oaud` (not `:aud`) against `sts.amazonaws.com`,
+alongside the unchanged `accounts.google.com:sub` ID-pin. Verified live,
+end to end: the Cloud Run Job successfully assumes `infra-dispatch-read`,
+reads `/runtime/infra-dispatch-token`, and dispatches `vend-token.yml`
+(`HTTP 204`, a real workflow run landing within seconds).
+
+**Consequence for future non-GitHub OIDC federation in this repo**: any
+future identity provider AWS recognizes natively (Amazon, Facebook, and
+Google are the current set) needs this same literal-principal-plus-`oaud`
+shape, not the generic `iam:CreateOpenIDConnectProvider` pattern
+`iam/main.tf`'s other roles use. Everything else here — path/tier
+scoping, ID-pinning via `sub`, bootstrap-only state — is unaffected and
+was correct as originally designed.
