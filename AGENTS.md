@@ -274,7 +274,7 @@ two independent fences. The audit invariant (ADR-0010 as amended by #126):
 | `infra-apply`                       | OIDC role | `/infra/*` read/write                    | no credential — assumed per job (apply/dispatch)                                                                             |
 | `infra-vend-write`                  | OIDC role | App-key read, vended-token write         | no credential — assumed per job (vend)                                                                                       |
 | `infra-local-apply`                 | IAM user  | `/infra/*` read/write                    | Keychain `infra-aws-local-apply`, prompt-gated (no `-A`)                                                                     |
-| `infra-local-read`                  | IAM user  | `/runtime/*` read                        | Keychain (dotfiles' `infra-aws-local-read`), silent (`-A`)                                                                   |
+| `infra-local-read`                  | IAM user  | runtime allow-list read (#243)           | Keychain (dotfiles' `infra-aws-local-read`), silent (`-A`)                                                                   |
 | `infra-bootstrap`                   | IAM user  | IAM/KMS/SSM trust roots                  | Keychain `infra-aws-bootstrap`, prompt-gated, deactivated                                                                    |
 | `infra-console-admin`               | IAM user  | console `*:*`, MFA-enforced              | no access key — console password + MFA in iCloud, recovery codes in Bitwarden (ADR-0015/0016)                                |
 | `project-starter-template-e2e-read` | OIDC role | vended-token read (single param)         | no credential — assumed per job, cross-repo consumer (#147)                                                                  |
@@ -313,8 +313,9 @@ minted and published by hand via the bootstrap key, never tofu-adopted
 account is only a collaborator) minted while signed into that machine
 account, published by `infra-console-admin` via the AWS console (it holds
 no access key), never tofu-adopted (`docs/BOOTSTRAP.md` §13).
-`infra-local-read`'s existing `/runtime/*` wildcard already covers
-reading them, no new grant. Rotate ~1yr (PAT expiry) — joins the periodic
+Both sit in `infra-local-read`'s explicit allow-list (`iam/main.tf`, #243)
+— a new `/runtime/*` param isn't local-readable until added there, an
+`iam/` break-glass apply. Rotate ~1yr (PAT expiry) — joins the periodic
 audit list above.
 
 `/runtime/backlog-manager-anthropic-key` and

@@ -424,3 +424,29 @@ schedule/push/`workflow_dispatch` triggers all present the same branch-ref sub
 those three roles' triggering workflows apart on `main` — every main-branch workflow looks
 identical to it. Accepted for now since all three already sit in this ADR's non-escalation,
 same-trust-tier set; revisit if a workflow with a lesser trust tier is ever added on `main`.
+
+## Amendment — #243 (2026-08-18): `infra-local-read` reads an explicit allow-list, not `/runtime/*`
+
+ADR-0024's `/runtime/infra-dispatch-token` (`actions:write` on `infra`)
+turned the matrix's `infra-local-read` row into an escalation path: the
+broadest-held local key — silent, `-A`, in every local/agent shell — could
+read a token that `workflow_dispatch`es any infra workflow, including
+`tofu-apply-dispatch.yml`, i.e. runtime-tier read → an infra apply. The
+matrix row's "`/runtime/*` read: yes" is superseded: `infra-local-read`'s
+grant is now an **explicit per-parameter ARN allow-list** (`iam/main.tf`) —
+every `/runtime/*` value with a local reader (steady-state consumption or
+bootstrap/rotation verification); `/runtime/infra-dispatch-token`, the sole
+parameter with no local reader _and_ an Actions-trigger capability, is
+excluded by construction. This also makes the row fail-closed for future
+parameters: a new `/runtime/*` value isn't local-readable until explicitly
+added to the list — an `iam/` break-glass apply (BOOTSTRAP.md §12–§14).
+`DecryptRuntimeTier` stays key-wide: a Decrypt grant can't be exercised
+against a parameter the SSM grant doesn't cover, so the per-param ARN list
+is the effective fence.
+
+Considered and rejected: an explicit `Deny` on just this parameter atop the
+wildcard (can't break a reader, but fail-_open_ for future parameters —
+fixes the instance, not the class); relocating the token to a non-`/runtime/`
+prefix (also fixes the class, but touches `vend-token.yml`, the dispatch
+container, and `infra-dispatch-read`, and a third prefix muddies this ADR's
+`/infra` vs `/runtime` split).

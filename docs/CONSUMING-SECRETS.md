@@ -30,7 +30,7 @@ key — two independent fences.
 | Path         | Holds                                                                                       | Who can read it                                                    |
 | ------------ | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
 | `/infra/*`   | Crown jewels — the App private key, admin PAT, state passphrase, R2 creds, Cloudflare token | `infra`'s CI roles and its prompt-gated local identity — never you |
-| `/runtime/*` | The rotating vended GitHub token                                                            | Any cross-repo consumer (`infra-local-read`)                       |
+| `/runtime/*` | The rotating vended GitHub token                                                            | Per-parameter grants only (`infra-local-read`'s allow-list, #243)  |
 
 Don't ask for another repo's secret to land under `/infra/*` because it's
 convenient — that tier is deliberately unreachable from any local/agent
@@ -40,8 +40,10 @@ App key out of those shells.
 
 ## Which identity you get
 
-The **`infra-local-read`** IAM user — `ssm:GetParameter` on `/runtime/*`
-plus `kms:Decrypt` on the runtime key, and nothing else. Its access key is
+The **`infra-local-read`** IAM user — `ssm:GetParameter` on an explicit
+allow-list of `/runtime/*` parameters (`iam/main.tf`, #243 — a new
+parameter isn't local-readable until added there) plus `kms:Decrypt`
+on the runtime key, and nothing else. Its access key is
 hand-created in the console and Keychain-stored with a silent-read ACL
 (routine, not elevated — `dotfiles`' AGENTS.md Credentials has the setup).
 `infra`'s CI roles and its local-apply/bootstrap users are not for reuse:

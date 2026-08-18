@@ -268,3 +268,19 @@ shape, not the generic `iam:CreateOpenIDConnectProvider` pattern
 `iam/main.tf`'s other roles use. Everything else here — path/tier
 scoping, ID-pinning via `sub`, bootstrap-only state — is unaffected and
 was correct as originally designed.
+
+## Amendment — #243 (2026-08-18): the dispatch token is two-fenced, not one
+
+The Decision's "scoped to nothing but `actions: write` on `infra`, leaving
+containment untouched" framing treated token scope as the only fence,
+and #243 found the gap that hid: `infra-local-read`'s then-`/runtime/*` wildcard
+let the broadest-held local key read this token, and `actions:write` on
+infra dispatches _any_ `workflow_dispatch` workflow — `tofu-apply-dispatch.yml`
+included — so runtime-tier read escalated to an infra apply. The real
+structure is **two independent fences** (ADR-0010's matrix as amended
+by #243): (1) **token scope** — `actions:write`, infra only; (2) **reader
+scope** — only `infra-dispatch-read` can read
+`/runtime/infra-dispatch-token`; `infra-local-read`'s explicit allow-list
+excludes it. Narrowing the reader set still doesn't gate the token→apply
+chain itself — defense-in-depth on the dispatch target (an Environment /
+required-reviewer gate) is #246.

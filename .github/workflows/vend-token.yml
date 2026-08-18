@@ -95,9 +95,11 @@ jobs:
             --output text --query Version)"
           echo "Published a fresh token (parameter version ${version}), expires ${expires_at}."
 
-      # Narrower than the vended-token above: actions:write only, infra only —
-      # #51's containment stays untouched (ADR-0024). The dispatch job only
-      # needs a bearer token, so no {token, expires_at} envelope here.
+      # Narrower than the vended-token above, and two-fenced (ADR-0024's #243
+      # amendment): the token is actions:write on infra only, and only
+      # infra-dispatch-read can read the param — infra-local-read's allow-list
+      # excludes it (ADR-0010's matrix). The dispatch job only needs a bearer
+      # token, so no {token, expires_at} envelope here.
       - name: Mint infra dispatch token
         id: dispatch-token
         uses: ./.github/actions/mint-app-token
