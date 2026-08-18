@@ -44,3 +44,10 @@ export TF_VAR_google_region=
 export TF_VAR_gcp_dispatch_service_account_unique_id=
 export TF_VAR_aws_dispatch_role_arn=
 export TF_VAR_dispatch_image=
+
+# The agent-memory bootstrap seam (ADR-0026, #240) — the deploy sub is
+# built from agent-memory-server's repo id, the unique_id read after
+# gcp/'s apply creates the runtime SA (docs/BOOTSTRAP.md §18). Not secret,
+# left blank until each exists.
+export TF_VAR_agent_memory_deploy_sub=
+export TF_VAR_gcp_agent_memory_service_account_unique_id=

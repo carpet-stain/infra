@@ -721,6 +721,72 @@ projects create`), then authenticate locally:
 --location="$TF_VAR_google_region"` (or wait for the next natural tick),
   then confirm a fresh `vend-token.yml` run appears in the Actions tab.
 
+## 18. The agent-memory endpoint's bootstrap identities
+
+**Additive** (ADR-0026, #240): the hosted agent-memory MCP endpoint
+(dotfiles#634's `agent-memory-server`) runs as a **consumer-owned** Cloud
+Run Service on §17's GCP project. infra bootstraps identities only — the
+Service, the Neon state, and every `/runtime/agent-memory/*` value are the
+consumer's (ADR-0026's boundary). Assumes §17 is done (project, billing,
+ADC, `gcp/` + `iam/` initialized). In order:
+
+- **Create the `carpet-stain/agent-memory-server` repo** — a human step
+  (App tokens can't create repos, see "What's still manual"). Apply the
+  same OIDC `sub` customization the other covered repos carry (the
+  ID-pinned form, ADR-0010's #163 amendment; #227 tracks the live-state
+  inconsistencies — verify the _emitted_ `sub` at first deploy, don't
+  assume). Then set the deploy subject in `.envrc.local`:
+
+  ```sh
+  repo_id=$(gh api repos/carpet-stain/agent-memory-server --jq .id)
+  export TF_VAR_agent_memory_deploy_sub="repo:carpet-stain@5483606/agent-memory-server@${repo_id}:ref:refs/heads/main"
+  ```
+
+  `gcp/variables.tf` regex-validates the shape, and the WIF provider's
+  `attribute_condition` re-pins it server-side — a wrong or empty subject
+  refuses to plan instead of deploying nothing silently (#227).
+
+- **Apply `gcp/`**: `just tofu-gcp apply`. Creates the `agent-memory`
+  Artifact Registry repo, the runtime SA (`cloud-run-agent-memory`), the
+  deploy SA (`agent-memory-deploy`), the GitHub WIF pool/provider, and
+  the deploy SA's three grants (`run.developer` at project scope,
+  `artifactregistry.writer` on the one image repo, `serviceAccountUser`
+  on the one runtime SA).
+
+- **Seed `iam/`'s trust and apply it** — same chicken-and-egg shape as
+  §17's phase 3 (Keychain prompt: `infra-aws-bootstrap`, reactivate per §3):
+
+  ```sh
+  gcloud iam service-accounts describe \
+    "cloud-run-agent-memory@${TF_VAR_google_project_id}.iam.gserviceaccount.com" \
+    --format='value(uniqueId)'
+  ```
+
+  Set `TF_VAR_gcp_agent_memory_service_account_unique_id` to that value
+  in `.envrc.local`, then:
+
+  ```sh
+  just tofu-iam apply
+  just tofu-iam output agent_memory_ssm_read_role_arn
+  ```
+
+- **Publish the seam to the consumer** — `agent-memory-server`'s CI reads
+  these as repo variables (none are secret: emails, resource names, and a
+  role ARN grant nothing without the pinned trust):
+  `just tofu-gcp output agent_memory_wif_provider` (→ its
+  `workload_identity_provider`), `agent_memory_deploy_service_account_email`,
+  `agent_memory_repository_url`, and `iam/`'s
+  `agent_memory_ssm_read_role_arn` (→ the Service's `AWS_ROLE_ARN` env).
+
+- **After the consumer's first deploy** (dotfiles#634): front the Service
+  with the Cloudflare edge — add its custom-domain record to `dns.tf`
+  (the Service hostname doesn't exist before that deploy, which is why
+  the record isn't pre-created here) plus an edge rate-limit, and verify
+  the consumer locked the Service's ingress so the raw `*.run.app` URL
+  isn't directly invocable — the cost-DoS fence ADR-0026 requires, since
+  the app bearer gates data, not invocation. Then a reachability check
+  from a cloud surface, and dotfiles#636's cold-p95 go/no-go.
+
 ## What's still manual, permanently
 
 Not a bootstrap-only list — these stay manual forever, for reasons
@@ -757,6 +823,10 @@ tooling gaps:
   bootstrap ordering; `gcp/dispatch/`'s image rebuild-and-push whenever the
   container source changes joins the same periodic audit, since nothing
   rebuilds it automatically.
+- The agent-memory seam (§18, ADR-0026) — the consumer repo's OIDC `sub`
+  customization, the published repo variables, and the post-deploy
+  Cloudflare record + ingress-lock verification; `agent-memory-ssm-read`
+  joins the fence (a) audit set alongside `infra-dispatch-read`.
 - The elevated Keychain items' read prompt — the fence the containment
   invariant rests on, and one "Always Allow" click (or a confirm setting
   that skips the keychain password) disables it silently: found live in

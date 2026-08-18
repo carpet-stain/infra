@@ -354,6 +354,52 @@ resource "aws_iam_role_policy" "dispatch_read" {
   })
 }
 
+# --- GCP agent-memory Cloud Run consumer (OIDC-assumed, ADR-0026, #240) ----
+
+# Same native-principal + :oaud shape as dispatch_read above (ADR-0024's
+# amendment); sub is gcp/'s cloud-run-agent-memory SA numeric unique_id.
+resource "aws_iam_role" "agent_memory_ssm_read" {
+  name = "agent-memory-ssm-read"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Federated = "accounts.google.com" }
+      Action    = "sts:AssumeRoleWithWebIdentity"
+      Condition = {
+        StringEquals = {
+          "accounts.google.com:oaud" = "sts.amazonaws.com"
+          "accounts.google.com:sub"  = var.gcp_agent_memory_service_account_unique_id
+        }
+      }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "agent_memory_ssm_read" {
+  name = "read-agent-memory-parameters"
+  role = aws_iam_role.agent_memory_ssm_read.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        # A path wildcard, not one ARN: the consumer owns several values
+        # here (connection-uri, per-role bearers), all created outside this state (ADR-0026).
+        Sid      = "ReadAgentMemoryParameters"
+        Effect   = "Allow"
+        Action   = "ssm:GetParameter"
+        Resource = "${local.ssm_param_arn}/runtime/agent-memory/*"
+      },
+      {
+        Sid      = "DecryptRuntimeTier"
+        Effect   = "Allow"
+        Action   = "kms:Decrypt"
+        Resource = aws_kms_key.runtime_secrets.arn
+      },
+    ]
+  })
+}
+
 # --- Local identity --------------------------------------------------------
 
 # Single IAM user, not a group (CIS) — keeps the audit invariant's grant holder unambiguous (ADR-0010).
