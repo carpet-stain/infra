@@ -37,3 +37,19 @@ variable "gcp_dispatch_service_account_unique_id" {
     ADR-0010's own bootstrap sequence.
   EOT
 }
+
+variable "gcp_agent_memory_service_account_unique_id" {
+  type        = string
+  nullable    = false
+  description = <<-EOT
+    Numeric unique_id of gcp/'s cloud-run-agent-memory service account —
+    pins agent-memory-ssm-read's trust to that one identity, same
+    discipline (and same gcloud read, docs/BOOTSTRAP.md §18) as the
+    dispatch variable above (ADR-0026, #240).
+  EOT
+
+  validation {
+    condition     = can(regex("^[0-9]+$", var.gcp_agent_memory_service_account_unique_id))
+    error_message = "Must be the SA's numeric uniqueId, never its email — a wrong or empty value refuses to plan rather than failing closed at runtime (#227, ADR-0010's #163 ID-pinning)."
+  }
+}

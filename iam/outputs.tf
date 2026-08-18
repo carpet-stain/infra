@@ -31,3 +31,8 @@ output "dispatch_read_role_arn" {
   value       = aws_iam_role.dispatch_read.arn
   description = "Feed into gcp/'s TF_VAR_aws_dispatch_role_arn — the Cloud Run Job's AWS_ROLE_ARN env (ADR-0024, #191)."
 }
+
+output "agent_memory_ssm_read_role_arn" {
+  value       = aws_iam_role.agent_memory_ssm_read.arn
+  description = "The memory Service's AWS_ROLE_ARN env — consumed by agent-memory-server's deploy (ADR-0026, #240)."
+}

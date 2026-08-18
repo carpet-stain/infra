@@ -40,3 +40,20 @@ variable "dispatch_image" {
     build images, only references one that already exists in the registry.
   EOT
 }
+
+variable "agent_memory_deploy_sub" {
+  type        = string
+  nullable    = false
+  description = <<-EOT
+    Exact GitHub OIDC subject claim allowed to impersonate the
+    agent-memory deploy SA — agent-memory-server's main-branch sub in
+    ADR-0010's ID-pinned form. Build it from the repo id
+    (`gh api repos/carpet-stain/agent-memory-server --jq .id`) once that
+    repo exists (docs/BOOTSTRAP.md §18, ADR-0026).
+  EOT
+
+  validation {
+    condition     = can(regex("^repo:carpet-stain@5483606/agent-memory-server@[0-9]+:ref:refs/heads/main$", var.agent_memory_deploy_sub))
+    error_message = "Must be the ID-pinned main-branch sub repo:carpet-stain@5483606/agent-memory-server@<repo-id>:ref:refs/heads/main — a wrong or empty value refuses to plan rather than deploying nothing silently (#227)."
+  }
+}

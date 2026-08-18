@@ -122,3 +122,95 @@ resource "google_cloud_scheduler_job" "dispatch" {
     google_cloud_run_v2_job_iam_member.scheduler_can_run,
   ]
 }
+
+# --- agent-memory bootstrap (ADR-0026, #240) -------------------------------
+# Identities only — the Service itself is consumer-owned (ADR-0026's boundary).
+
+resource "google_artifact_registry_repository" "agent_memory" {
+  repository_id = "agent-memory"
+  format        = "DOCKER"
+  location      = var.google_region
+  description   = "agent-memory-server's image — the hosted MCP memory endpoint (ADR-0026, #240)."
+
+  depends_on = [google_project_service.artifactregistry]
+}
+
+# Its unique_id pins iam/'s agent-memory-ssm-read trust — same shape as
+# cloud-run-dispatch above (docs/BOOTSTRAP.md §18).
+resource "google_service_account" "agent_memory_runtime" {
+  account_id   = "cloud-run-agent-memory"
+  display_name = "Cloud Run agent-memory service — federates to AWS agent-memory-ssm-read (ADR-0026, #240)"
+}
+
+# WIF token exchange (sts) + SA impersonation (iamcredentials) for the
+# keyless deploy path below.
+resource "google_project_service" "sts" {
+  service            = "sts.googleapis.com"
+  disable_on_destroy = false
+}
+
+resource "google_project_service" "iamcredentials" {
+  service            = "iamcredentials.googleapis.com"
+  disable_on_destroy = false
+}
+
+resource "google_iam_workload_identity_pool" "github" {
+  workload_identity_pool_id = "github-actions"
+  display_name              = "GitHub Actions"
+
+  depends_on = [google_project_service.sts]
+}
+
+# attribute_condition duplicates the SA binding's subject pin on purpose —
+# a future too-wide binding still can't trust a sub outside it (#227 fail-loud).
+resource "google_iam_workload_identity_pool_provider" "github" {
+  workload_identity_pool_id          = google_iam_workload_identity_pool.github.workload_identity_pool_id
+  workload_identity_pool_provider_id = "github-oidc"
+  display_name                       = "GitHub OIDC"
+
+  oidc {
+    issuer_uri = "https://token.actions.githubusercontent.com"
+  }
+
+  attribute_mapping = {
+    "google.subject" = "assertion.sub"
+  }
+
+  attribute_condition = "assertion.sub == '${var.agent_memory_deploy_sub}'"
+}
+
+resource "google_service_account" "agent_memory_deploy" {
+  account_id   = "agent-memory-deploy"
+  display_name = "agent-memory-server CI deploy via GitHub WIF (ADR-0026, #240)"
+}
+
+resource "google_service_account_iam_member" "agent_memory_deploy_wif" {
+  service_account_id = google_service_account.agent_memory_deploy.name
+  role               = "roles/iam.workloadIdentityUser"
+  member             = "principal://iam.googleapis.com/${google_iam_workload_identity_pool.github.name}/subject/${var.agent_memory_deploy_sub}"
+
+  depends_on = [google_project_service.iamcredentials]
+}
+
+# Project scope, not resource: run.developer on the one Service would need
+# it to pre-exist, and the consumer creates it (ADR-0026's bounded-blast-radius call).
+resource "google_project_iam_member" "agent_memory_deploy_run" {
+  project = var.google_project_id
+  role    = "roles/run.developer"
+  member  = "serviceAccount:${google_service_account.agent_memory_deploy.email}"
+}
+
+resource "google_artifact_registry_repository_iam_member" "agent_memory_deploy_push" {
+  repository = google_artifact_registry_repository.agent_memory.name
+  location   = var.google_region
+  role       = "roles/artifactregistry.writer"
+  member     = "serviceAccount:${google_service_account.agent_memory_deploy.email}"
+}
+
+# run.developer alone can't deploy a Service that runs as another SA —
+# actAs on the runtime SA is the missing half.
+resource "google_service_account_iam_member" "agent_memory_deploy_act_as_runtime" {
+  service_account_id = google_service_account.agent_memory_runtime.name
+  role               = "roles/iam.serviceAccountUser"
+  member             = "serviceAccount:${google_service_account.agent_memory_deploy.email}"
+}

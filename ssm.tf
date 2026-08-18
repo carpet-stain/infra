@@ -9,6 +9,8 @@
 # created by vend-token.yml's first put-parameter (#124), keeping this
 # CI-applied state — and the infra-apply role — entirely out of the
 # rotating tier, so ADR-0010's role×path matrix holds exactly.
+# /runtime/agent-memory/* (connection-uri, per-role bearers) is the same
+# pattern: consumer-created by agent-memory-server, never here (ADR-0026).
 
 locals {
   # Parameter name under /infra/ → description — kebab-cased versions of
