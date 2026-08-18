@@ -430,10 +430,11 @@ before every call (confirmed against the installed `b2-tools` 4.7.1
 CLI's own `--help`).
 
 **Publish it to `/runtime/agent-memory-backup-key`**, not `/infra/*` —
-`infra-local-read`'s existing `/runtime/*` wildcard already covers the
-read dotfiles' `aws-vended-token.sh` needs, so no new read grant is
-required. Writing it is the wrinkle: neither `infra-local-apply`
-(`/infra/*` only) nor `infra-local-read` (`/runtime/*` read-only) can
+the read dotfiles' `aws-vended-token.sh` needs rides `infra-local-read`'s
+explicit allow-list (`iam/main.tf`, #243), which names this parameter; a
+brand-new `/runtime/*` param needs adding to that list first — an `iam/`
+break-glass apply. Writing it is the wrinkle: neither `infra-local-apply`
+(`/infra/*` only) nor `infra-local-read` (runtime-tier read-only) can
 write here, and giving either a standing `/runtime/*` write grant would
 undercut ADR-0010's tier boundary for a parameter that's populated once
 and barely touched again. Use the **bootstrap key** (§3) instead — it
@@ -485,8 +486,9 @@ scope `public_repo`, ~1yr expiry. `public_repo` alone: all managed repos
 are public, and the collaborator role does the actual bounding.
 
 **Publish each to its own `/runtime/*` parameter**, not `/infra/*` —
-`infra-local-read`'s existing `/runtime/*` wildcard already covers the
-read, so no new IAM grant is needed. Unlike §12's client key, neither the
+both names sit in `infra-local-read`'s explicit allow-list
+(`iam/main.tf`, #243); a new `/runtime/*` param needs adding to that
+list first — an `iam/` break-glass apply. Unlike §12's client key, neither the
 bootstrap key nor a CLI session is the right tool here: this is exactly
 the kind of one-off admin write `infra-console-admin` exists for
 (ADR-0015), and it holds no access key by design, so do it in the AWS
@@ -541,8 +543,9 @@ Verify with a decrypting read as `infra-local-read` before treating
 either as live, same as §13. **Not tofu-adopted**, same reasoning as §13
 — these join the PATs as permanently-manual `/runtime/*` values.
 
-**Fetch path, local:** `infra-local-read`'s existing `/runtime/*`
-wildcard already covers both parameters — no new IAM grant.
+**Fetch path, local:** both keys sit in `infra-local-read`'s explicit
+allow-list (`iam/main.tf`, #243) — a new `/runtime/*` param needs adding
+to that list first, an `iam/` break-glass apply.
 
 **Fetch path, CI (dotfiles#596):** not wired yet. The hosted agent
 runtime dotfiles#596 defines doesn't exist yet, and ADR-0010's ID-pinning
@@ -595,10 +598,11 @@ secret. `iam/main.tf`'s `pr-review-openrouter-read` OIDC role (applied in the
 next break-glass IAM apply, §5's shape) grants exactly this one parameter to
 both repos' `pull_request`-triggered workflows.
 
-**Publish it to `/runtime/openrouter-api-key`**, not `/infra/*` — the key is
-consumed only via the new OIDC role, so no local identity needs a read grant.
+**Publish it to `/runtime/openrouter-api-key`**, not `/infra/*` — steady-state
+consumption is the new OIDC role only, but `infra-local-read`'s allow-list
+(`iam/main.tf`, #243) names it too, for rotation verification reads like §13's.
 Neither `infra-local-apply` (`/infra/*` only) nor `infra-local-read`
-(`/runtime/*` read-only) can write here; use the bootstrap key (§3, §12's
+(runtime-tier read-only) can write here; use the bootstrap key (§3, §12's
 shape):
 
 ```sh

@@ -415,12 +415,23 @@ resource "aws_iam_user_policy" "local_read" {
     Version = "2012-10-17"
     Statement = [
       {
-        Sid      = "ReadRuntimeParameters"
-        Effect   = "Allow"
-        Action   = "ssm:GetParameter"
-        Resource = "${local.ssm_param_arn}/runtime/*"
+        # Explicit allow-list, never /runtime/* — infra-dispatch-token
+        # (actions:write on infra) stays out of this key's reach (#243, ADR-0010).
+        Sid    = "ReadRuntimeParameters"
+        Effect = "Allow"
+        Action = "ssm:GetParameter"
+        Resource = [
+          "${local.ssm_param_arn}/runtime/vended-token",
+          "${local.ssm_param_arn}/runtime/backlog-manager-pat",
+          "${local.ssm_param_arn}/runtime/plan-reviewer-pat",
+          "${local.ssm_param_arn}/runtime/backlog-manager-anthropic-key",
+          "${local.ssm_param_arn}/runtime/plan-reviewer-anthropic-key",
+          "${local.ssm_param_arn}/runtime/openrouter-api-key",
+          "${local.ssm_param_arn}/runtime/agent-memory-backup-key",
+        ]
       },
       {
+        # Stays key-wide — the per-param SSM grant above is the effective fence (#243).
         Sid      = "DecryptRuntimeTier"
         Effect   = "Allow"
         Action   = "kms:Decrypt"
