@@ -6,6 +6,25 @@
 
 locals {
   repos = {
+    agent-memory-server = {
+      # Stood up empty like `agents` (#248) — infra#240's WIF deploy trust keys
+      # on this repo's Actions OIDC subject, so it must exist first.
+      description           = "Hosted per-role agent memory — MCP-over-HTTP server (TypeScript) on Neon Postgres, plus its deploy IaC and consumer-side Neon TF (ADR-0046)"
+      visibility            = "public"
+      auto_init             = true
+      has_issues            = true
+      has_projects          = false
+      has_wiki              = false
+      has_discussions       = false
+      allow_auto_merge      = true
+      extra_required_checks = []
+      topics = [
+        "ai-agents",
+        "mcp",
+        "agent-memory",
+      ]
+    }
+
     agents = {
       # Stood up empty (dotfiles#563, #177) — auto_init seeds main before the
       # ruleset applies, so there's no unprotected window before content lands.
