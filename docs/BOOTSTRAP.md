@@ -348,7 +348,8 @@ GITHUB_TOKEN gh variable set CLOUDFLARE_ACCOUNT_ID`.
 ## 10. Bring in the CI workflows
 
 Add `.github/actions/mint-app-token/`, `.github/actions/read-ssm-params/`,
-and the `.github/workflows/tofu-*.yml` files. Open a PR touching only
+`.github/actions/derive-repo-list/`, and the `.github/workflows/tofu-*.yml`
+files. Open a PR touching only
 these, confirm `tofu plan` posts a comment showing no unexpected drift
 (this exercises `infra-plan-read` end to end), merge, and confirm
 `tofu-apply.yml` completes automatically (`infra-apply`).
