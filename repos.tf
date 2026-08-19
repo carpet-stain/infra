@@ -17,7 +17,8 @@ locals {
       has_wiki              = false
       has_discussions       = false
       allow_auto_merge      = true
-      extra_required_checks = []
+      extra_required_checks = ["test"]
+      reusable_guards       = true # composed contexts — pst#104 phase 2
       topics = [
         "ai-agents",
         "mcp",
