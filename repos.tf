@@ -126,6 +126,7 @@ locals {
       has_discussions       = false
       allow_auto_merge      = true
       extra_required_checks = []
+      reusable_guards       = true # composed contexts — pst#104 phase 2
       topics = [
         "git-flow",
         "template",
@@ -147,6 +148,7 @@ locals {
       has_discussions       = false
       allow_auto_merge      = true
       extra_required_checks = []
+      reusable_guards       = true # composed contexts — pst#104 phase 2
       topics = [
         "e2e",
         "sandbox",
