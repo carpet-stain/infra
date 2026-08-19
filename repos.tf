@@ -37,6 +37,7 @@ locals {
       has_discussions       = false
       allow_auto_merge      = true
       extra_required_checks = []
+      reusable_guards       = true # composed contexts — pst#104 phase 2
       topics = [
         "ai-agents",
         "agent-definitions",
@@ -91,6 +92,7 @@ locals {
       has_discussions       = false
       allow_auto_merge      = false
       extra_required_checks = []
+      reusable_guards       = true # composed contexts — pst#104 phase 2
       topics = [
         "backtesting",
         "leveraged-etfs",
