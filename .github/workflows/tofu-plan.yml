@@ -91,13 +91,17 @@ jobs:
       # standing GH_TOKEN PAT (#59). administration:read covers repo settings,
       # rulesets, and vulnerability_alerts; issues:read covers labels;
       # metadata is automatic. No write scope — a plan never mutates.
+      - name: Derive managed-repo list
+        id: repo-list
+        uses: ./.github/actions/derive-repo-list
+
       - name: Mint read-only App token
         id: app-token
         uses: ./.github/actions/mint-app-token
         with:
           client-id: ${{ vars.GH_APP_CLIENT_ID }}
           private-key: ${{ steps.ssm.outputs.GH_APP_PRIVATE_KEY }}
-          repositories: dotfiles,infra,project-starter-template,golden-ratio-dual-gate,deal-finder,template-e2e,agents,agent-memory-server
+          repositories: ${{ steps.repo-list.outputs.repositories }}
           permission-administration: read
           permission-issues: read
 

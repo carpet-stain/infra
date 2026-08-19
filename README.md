@@ -38,7 +38,10 @@ before it reaches the R2 bucket. Losing `TF_STATE_PASSPHRASE` means
 re-importing, not recovering (ADR-0002).
 
 Adding a repo: an entry in `repos.tf`'s map — the next apply creates it
-with labels and its ruleset. Gotcha: GitHub seeds a fresh repo with its
+with labels and its ruleset. Install the App on the new repo first
+(manual, ADR-0004) — the entry must not merge before it, or every tofu
+workflow 422s at token mint (see AGENTS.md's Credentials section).
+Gotcha: GitHub seeds a fresh repo with its
 default labels, and the ones colliding with the canonical set (bug,
 documentation, duplicate, enhancement, good first issue, wontfix) need
 temporary `import` blocks; delete the four strays (help wanted, invalid,

@@ -114,13 +114,17 @@ jobs:
       # Scoped to exactly what main.tf's resources write: Administration
       # (repo settings, rulesets) and Issues (labels) — nothing else, and
       # only for the repos this apply actually touches.
+      - name: Derive managed-repo list
+        id: repo-list
+        uses: ./.github/actions/derive-repo-list
+
       - name: Mint elevated App token
         id: app-token
         uses: ./.github/actions/mint-app-token
         with:
           client-id: ${{ vars.GH_APP_CLIENT_ID }}
           private-key: ${{ steps.ssm.outputs.GH_APP_PRIVATE_KEY }}
-          repositories: dotfiles,infra,project-starter-template,golden-ratio-dual-gate,deal-finder,template-e2e,agents,agent-memory-server
+          repositories: ${{ steps.repo-list.outputs.repositories }}
           permission-administration: write
           permission-issues: write
 

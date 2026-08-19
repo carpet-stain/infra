@@ -1,0 +1,39 @@
+name: Derive managed-repo list
+description: >
+  Emits local.repos' keys (repos.tf) as a comma-separated list — the
+  single source of truth for mint-app-token's repositories: scope (#263),
+  replacing the hand-maintained CSV that drifted twice (#22, #262). The
+  token is the github provider's own credential, minted before `tofu init`,
+  so this is a text parse of repos.tf, not `tofu output`. The parse relies
+  on `tofu fmt`'s canonical indentation (CI-enforced by tofu-format): each
+  repo key sits exactly one level inside `repos = {`. Scope stays the
+  explicit local.repos set — not the App installation's full repo list
+  (rejected in #263: an ADR-0004/0005 posture change).
+
+outputs:
+  repositories:
+    description: Comma-separated local.repos keys.
+    value: ${{ steps.parse.outputs.repositories }}
+
+runs:
+  using: composite
+  steps:
+    - name: Parse local.repos keys
+      id: parse
+      shell: bash
+      run: |
+        set -euo pipefail
+        list=$(awk '/^  repos = \{/ { f = 1; next }
+                    f && /^  \}/ { exit }
+                    f && /^    [A-Za-z0-9_-]+ = \{$/ { print $1 }' repos.tf |
+          paste -sd, -)
+        # infra itself is always managed — its absence means the parse
+        # broke. Fail here, not as a provider 403 mid-plan.
+        case ",${list}," in
+          *,infra,*) ;;
+          *)
+            echo "::error::repos.tf parse failed, got: '${list}'"
+            exit 1
+            ;;
+        esac
+        echo "repositories=${list}" >>"$GITHUB_OUTPUT"

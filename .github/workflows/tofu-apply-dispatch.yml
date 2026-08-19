@@ -67,13 +67,17 @@ jobs:
       # read via the SSM fetch above, not managed by the github provider. No
       # permission-variables either — see mint-app-token's own comment for
       # why github_actions_variable isn't tofu-managed.
+      - name: Derive managed-repo list
+        id: repo-list
+        uses: ./.github/actions/derive-repo-list
+
       - name: Mint elevated App token
         id: app-token
         uses: ./.github/actions/mint-app-token
         with:
           client-id: ${{ vars.GH_APP_CLIENT_ID }}
           private-key: ${{ steps.ssm.outputs.GH_APP_PRIVATE_KEY }}
-          repositories: dotfiles,infra,project-starter-template,golden-ratio-dual-gate,deal-finder,template-e2e,agents,agent-memory-server
+          repositories: ${{ steps.repo-list.outputs.repositories }}
           permission-administration: write
           permission-issues: write
 
