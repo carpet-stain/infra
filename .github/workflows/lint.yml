@@ -1,7 +1,7 @@
 name: Lint
 
 # Thin caller — the lint body lives in the template source repo's
-# reusable-lint.yml (its ADR-0004); Dependabot bumps the SHA pin.
+# reusable-lint.yml (its ADR-0004) — pinned to its moving major tag (its #110).
 on:
   pull_request:
     types: [opened, reopened, synchronize, ready_for_review]
@@ -17,4 +17,4 @@ concurrency:
 jobs:
   # Job id `guards` matches the other callers; context: `guards / lint`.
   guards:
-    uses: carpet-stain/project-starter-template/.github/workflows/reusable-lint.yml@504d81a0dca5b0e67d7756610cf22b49b2be7ddf # main
+    uses: carpet-stain/project-starter-template/.github/workflows/reusable-lint.yml@v1
