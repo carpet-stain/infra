@@ -38,7 +38,6 @@ locals {
       has_discussions       = false
       allow_auto_merge      = true
       extra_required_checks = []
-      reusable_guards       = true # composed contexts — pst#104 phase 2
       topics = [
         "ai-agents",
         "agent-definitions",
@@ -68,7 +67,6 @@ locals {
       # dotfiles.pr-guards.yml's issue-link job (#449) hasn't propagated to every
       # repo's workflow yet — per-repo here, not main.tf's shared check list.
       extra_required_checks = ["guards / issue link"]
-      reusable_guards       = true # composed contexts — pst#104 phase 2
       topics = [
         "configuration-management",
         "dotfiles",
@@ -94,7 +92,6 @@ locals {
       has_discussions       = false
       allow_auto_merge      = false
       extra_required_checks = []
-      reusable_guards       = true # composed contexts — pst#104 phase 2
       topics = [
         "backtesting",
         "leveraged-etfs",
@@ -114,7 +111,6 @@ locals {
       has_discussions       = false
       allow_auto_merge      = true
       extra_required_checks = []
-      reusable_guards       = true # composed contexts — pst#104 phase 2
       topics = [
         "opentofu",
         "infrastructure-as-code",
@@ -131,7 +127,6 @@ locals {
       has_discussions       = false
       allow_auto_merge      = true
       extra_required_checks = []
-      reusable_guards       = true # composed contexts — pst#104 phase 2
       topics = [
         "git-flow",
         "template",
@@ -153,7 +148,6 @@ locals {
       has_discussions       = false
       allow_auto_merge      = true
       extra_required_checks = []
-      reusable_guards       = true # composed contexts — pst#104 phase 2
       topics = [
         "e2e",
         "sandbox",
