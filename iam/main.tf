@@ -268,8 +268,8 @@ resource "aws_iam_role_policy" "pst_e2e_read" {
   })
 }
 
-# agents' and dotfiles' pr-code-review.yml — dotfiles' OIDC sub isn't
-# ID-pinned yet, so its AssumeRoleWithWebIdentity denies until flipped (#220).
+# agents' and dotfiles' pr-code-review.yml — both subs ID-pinned and
+# verified live against real runs (#220, #227).
 resource "aws_iam_role" "pr_review_openrouter_read" {
   name = "pr-review-openrouter-read"
   assume_role_policy = jsonencode({

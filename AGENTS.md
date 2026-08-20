@@ -340,9 +340,11 @@ rather than a credential minted per agent account. Fetch path is a
 dedicated OIDC role, `pr-review-openrouter-read` (`iam/main.tf`), trusting
 both repos' `pr-code-review.yml` `pull_request` subs and granted
 `ssm:GetParameter` on this one parameter — the first CI OIDC consumer of
-the runtime tier outside `infra-vend-write`. dotfiles' OIDC sub still needs
-flipping to the ID-pinned form before its trust condition matches (#220);
-the consuming workflow changes are separate (`agents#16`, `dotfiles#626`).
+the runtime tier outside `infra-vend-write`. Both repos' subs are
+ID-pinned and the assume-role path is verified against live runs
+(#220, #227); each consuming repo's `AWS_OPENROUTER_ROLE_ARN` variable
+is seeded by hand with the admin token (`docs/BOOTSTRAP.md` §16) until
+issue #228 automates it.
 Carries no built-in expiry — rotate ≤1yr by policy, joins the periodic
 audit list above.
 
