@@ -623,11 +623,21 @@ Deactivate the bootstrap key again immediately after (§3's discipline).
 (`ssm.tf`'s header comment, ADR-0010), joining the vended token, §12's B2
 client key, and §13/14's PATs/Anthropic keys as a permanently-manual value.
 `--overwrite` rotates it in place; re-run this section whenever it needs
-rotating. Before this role can do anything, dotfiles' OIDC sub
-customization needs flipping to the ID-pinned form (#220 step C, verified
-via a live `AssumeRoleWithWebIdentity` against both repos) — agents already
-reports the pinned form. The consuming workflow changes themselves
-(`agents#16`, `dotfiles#626`) are separate, sequenced after that flip.
+rotating. Both repos' OIDC subs report the ID-pinned form and the
+assume path is verified against live runs (#220, #227). One more seed
+each consuming repo needs (#227's root cause when missed — the action
+silently falls through to an empty credential chain, no AccessDenied):
+the role ARN variable, set with the admin token (§5's `a` shape,
+ADR-0013; value from `just tofu-iam output`):
+
+```sh
+a gh variable set AWS_OPENROUTER_ROLE_ARN --repo carpet-stain/agents
+a gh variable set AWS_OPENROUTER_ROLE_ARN --repo carpet-stain/dotfiles
+# pr_review_openrouter_read_role_arn output
+```
+
+Issue #228 tracks automating this publish; until then it's part of
+this section's re-run.
 
 ## 17. GCP project, Cloud Scheduler, and the dispatch Cloud Run Job
 

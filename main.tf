@@ -183,10 +183,8 @@ resource "github_repository_ruleset" "this" {
       strict_required_status_checks_policy = true
       do_not_enforce_on_create             = false
 
-      # extra_required_checks (repos.tf) is per-repo on purpose: an unscoped
-      # required check with no run ever reported blocks merge forever, account-wide.
-      # Composed `guards / <name>` contexts: every repo consumes the reusable
-      # guards via a thin `guards:` caller job (pst ADR-0004, pst#104/#110).
+      # extra_required_checks (repos.tf) stays per-repo — an unscoped check that
+      # never reports blocks merge forever. Composed contexts: pst ADR-0004/#110.
       dynamic "required_check" {
         for_each = concat(["guards / single commit", "guards / conventional commit", "guards / adr guard"], each.value.extra_required_checks)
         content {
