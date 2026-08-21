@@ -849,6 +849,88 @@ ADC, `gcp/` + `iam/` initialized). In order:
   the app bearer gates data, not invocation. Then a reachability check
   from a cloud surface, and dotfiles#636's cold-p95 go/no-go.
 
+## 19. agent-memory-server's CI-apply seam — R2 state, `/cicd`, and its CI roles
+
+**Additive** (ADR-0010/ADR-0016's #272 amendments): agent-memory-server
+moves to full CI apply for its own `terraform/`. Unlike §18, this is
+credential/state plumbing, not identities-only — infra provisions a
+dedicated R2 state bucket, a bootstrap secret tier, and two OIDC roles;
+the consumer's tofu manages its own resources against them. Assumes §18
+is done. No cycle in this order, followed exactly:
+
+- **Apply the R2 bucket** — `cloudflare.tf`'s `agent_memory_tofu_state` is
+  a normal root-module resource; `infra-apply`/`infra-local-apply` already
+  hold R2 bucket-creation rights, so a routine `just tofu-apply` (or the
+  CI apply-on-merge pipeline) creates it — no bootstrap ceremony of its
+  own, just sequencing: it has to exist before the next step.
+
+- **Hand-mint a bucket-scoped R2 token pair** — Cloudflare dashboard,
+  scoped to `agent-memory-tofu-state` only (§1's shape, a second pair):
+  one **Object Read & Write** (apply), one **Object Read only**
+  (plan). Record both raw token values and the account id — same
+  ID-is-the-access-key-id, `sha256`-the-token-for-the-secret rule as
+  every other R2 pair in this repo (ADR-0002).
+
+- **Mint the second Neon key** — Neon dashboard, account-level (keys
+  aren't project-scopable), distinct from `/infra/neon-api-key`. This is
+  containment/rotation independence, not isolation — recorded plainly in
+  ADR-0010's #272 amendment, not re-derived here.
+
+- **Generate a state passphrase** for agent-memory-server's own state:
+  `openssl rand -hex 32` (§1's shape) — no Bitwarden backup needed here,
+  unlike `/infra/tf-state-passphrase`; that dual-home is `/infra`'s own
+  sanctioned exception (ADR-0016), not a pattern this tier repeats.
+
+- **Hand-populate `/cicd/agent-memory/*`** with the seven values above
+  (§4's loop shape, `aws ssm put-parameter`, run as `infra-console-admin`
+  or the reactivated bootstrap key — either can `ssm:PutParameter`
+  unscoped). `alias/cicd-secrets` doesn't exist yet, so these land
+  unencrypted-by-a-custom-key at first (the account default `aws/ssm`
+  key) — no separate re-encrypt loop is needed this time: unlike §4's
+  true from-zero chicken-and-egg, `iam/`'s state already exists and
+  `iam/main.tf`'s `aws_ssm_parameter.cicd_amem` resources declare
+  `key_id = aws_kms_alias.cicd_secrets.name` in the **same** apply that
+  creates the key, so the next step's one `tofu-iam apply` both creates
+  `alias/cicd-secrets` and re-keys every parameter to it in a single run.
+  Adopt with temporary `import` blocks (`id` = the parameter name, e.g.
+  `/cicd/agent-memory/neon-api-key` — the repo's adopt-then-delete
+  convention, same as §6).
+
+- **Apply `iam/`** (Keychain prompt: `infra-aws-bootstrap`, reactivate per
+  §3): `just tofu-iam apply`. Creates `alias/cicd-secrets`, adopts and
+  re-keys the seven `/cicd/agent-memory/*` parameters, and creates
+  `agent-memory-plan-read`/`agent-memory-apply`. Delete the spent `import`
+  blocks, then verify one decrypting read of each parameter.
+
+- **Seed the GCP plan-read subject** — same shape as §18's deploy
+  subject, a distinct value (`:pull_request`, not `:ref:refs/heads/main`):
+
+  ```sh
+  export TF_VAR_agent_memory_plan_read_sub="repo:carpet-stain@5483606/agent-memory-server@1337947129:pull_request"
+  ```
+
+  `gcp/variables.tf` regex-validates the shape; a wrong or empty value
+  refuses to plan rather than deploying nothing silently (#227's pattern).
+
+- **Re-apply `gcp/`**: `just tofu-gcp apply`. Adds the
+  `github-oidc-amem-plan-read` WIF provider, the `agent-memory-plan-read`
+  SA, and its project-scoped `run.viewer` grant — `agent-memory-deploy`
+  (§18) is untouched, still `run.developer`.
+
+- **Publish the seam to agent-memory-server** — repo variables, same
+  not-secret reasoning as §18 (role ARNs and WIF provider names grant
+  nothing without the pinned trust): `just tofu-iam output
+agent_memory_plan_read_role_arn` / `agent_memory_apply_role_arn` (→ its
+  `AWS_PLAN_ROLE_ARN` / `AWS_APPLY_ROLE_ARN`), and `just tofu-gcp output
+agent_memory_plan_read_service_account_email` /
+  `agent_memory_plan_read_wif_provider` (→ its plan job's
+  `google-github-actions/auth` inputs; the apply job keeps using §18's
+  `agent_memory_deploy_service_account_email` / `agent_memory_wif_provider`).
+
+- **The `allUsers` invoker binding stays out-of-band** — applied from
+  infra's own break-glass `gcp/` riding #250's post-deploy reachability
+  seam, not from anything in this section (ADR-0010's #272 amendment).
+
 ## What's still manual, permanently
 
 Not a bootstrap-only list — these stay manual forever, for reasons
@@ -889,6 +971,12 @@ tooling gaps:
   customization, the published repo variables, and the post-deploy
   Cloudflare record + ingress-lock verification; `agent-memory-ssm-read`
   joins the fence (a) audit set alongside `infra-dispatch-read`.
+- The agent-memory CI-apply seam (§19, ADR-0010/ADR-0016's #272
+  amendments) — the R2 token pair, the second Neon key, the state
+  passphrase, and every `/cicd/agent-memory/*` value are hand-populated
+  and `ignore_changes`d, same as `/infra/*`; `agent-memory-plan-read` and
+  `agent-memory-apply` join the periodic audit alongside
+  `agent-memory-ssm-read`.
 - The elevated Keychain items' read prompt — the fence the containment
   invariant rests on, and one "Always Allow" click (or a confirm setting
   that skips the keychain password) disables it silently: found live in

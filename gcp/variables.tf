@@ -57,3 +57,20 @@ variable "agent_memory_deploy_sub" {
     error_message = "Must be the ID-pinned main-branch sub repo:carpet-stain@5483606/agent-memory-server@<repo-id>:ref:refs/heads/main — a wrong or empty value refuses to plan rather than deploying nothing silently (#227)."
   }
 }
+
+variable "agent_memory_plan_read_sub" {
+  type        = string
+  nullable    = false
+  description = <<-EOT
+    Exact GitHub OIDC subject claim allowed to impersonate the
+    agent-memory plan-read SA — agent-memory-server's pull_request sub, a
+    distinct WIF provider from agent_memory_deploy_sub's main-branch one
+    (#272, so a PR-triggered plan-read job can never present the
+    apply-only sub).
+  EOT
+
+  validation {
+    condition     = can(regex("^repo:carpet-stain@5483606/agent-memory-server@[0-9]+:pull_request$", var.agent_memory_plan_read_sub))
+    error_message = "Must be the ID-pinned pull_request sub repo:carpet-stain@5483606/agent-memory-server@<repo-id>:pull_request — a wrong or empty value refuses to plan rather than deploying nothing silently (#227)."
+  }
+}

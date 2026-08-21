@@ -25,3 +25,16 @@ resource "cloudflare_r2_bucket" "tofu_state" {
     prevent_destroy = true
   }
 }
+
+# agent-memory-server's own tofu state (#272) — tofu_state's R2 model
+# applied to a second bucket; no self-reference, so no import{} needed.
+resource "cloudflare_r2_bucket" "agent_memory_tofu_state" {
+  account_id    = var.cloudflare_account_id
+  name          = "agent-memory-tofu-state"
+  jurisdiction  = "default"
+  storage_class = "Standard"
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}
