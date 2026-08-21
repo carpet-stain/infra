@@ -222,7 +222,7 @@ resource "google_service_account_iam_member" "agent_memory_deploy_act_as_runtime
 resource "google_iam_workload_identity_pool_provider" "github_agent_memory_plan_read" {
   workload_identity_pool_id          = google_iam_workload_identity_pool.github.workload_identity_pool_id
   workload_identity_pool_provider_id = "github-oidc-amem-plan-read"
-  display_name                       = "GitHub OIDC — agent-memory-server plan-read"
+  display_name                       = "GitHub OIDC (amem plan-read)"
 
   oidc {
     issuer_uri = "https://token.actions.githubusercontent.com"
