@@ -40,9 +40,22 @@ took the next slot rather than backfilling. `new-adr.sh` numbers from the
 highest existing file, so 0022 stays skipped permanently, not a bug to fix
 (#219).
 
+## Amending in place
+
+Additive, non-reversing changes are edited into the existing ADR, not superseded:
+
+- edits to a **living component** meant to grow over time — a checklist, matrix,
+  or decision tree (e.g. ADR-0014 §5, ADR-0010's matrix, ADR-0016's tree);
+- additive changes to a **Decision or Consequences** section — clarifications and
+  scope extensions (e.g. generalizing a stance to a broader set of accounts) —
+  that don't reverse the recorded decision or remove a rejected alternative.
+
+Mark each with a dated `Amended: YYYY-MM-DD — <what changed>` note in the ADR.
+
 ## Superseding
 
-When a later decision replaces an earlier one, create the new ADR, then set the
+When a later decision _reverses_ an earlier one, create the new ADR, then set the
 old one's Status to `Superseded by NNNN` (and the new one's to `Supersedes NNNN`)
 rather than editing the old ADR to match the new reality. The rejected path
-staying visible is the point.
+staying visible is the point — an additive change that doesn't reverse anything
+is amended in place instead (above).
