@@ -128,6 +128,41 @@ end is the account's first non-root credential.
         "Effect": "Allow",
         "Action": "ssm:*",
         "Resource": "*"
+      },
+      {
+        "Sid": "GuardrailBootstrap",
+        "Effect": "Allow",
+        "Action": ["budgets:*", "cloudtrail:*", "access-analyzer:*"],
+        "Resource": "*"
+      },
+      {
+        "Sid": "GuardrailTrailBucket",
+        "Effect": "Allow",
+        "Action": "s3:*",
+        "Resource": [
+          "arn:aws:s3:::infra-cloudtrail-*",
+          "arn:aws:s3:::infra-cloudtrail-*/*"
+        ]
+      },
+      {
+        "Sid": "GuardrailAccountPublicAccessBlock",
+        "Effect": "Allow",
+        "Action": [
+          "s3:PutAccountPublicAccessBlock",
+          "s3:GetAccountPublicAccessBlock"
+        ],
+        "Resource": "*"
+      },
+      {
+        "Sid": "GuardrailAnalyzerSlr",
+        "Effect": "Allow",
+        "Action": "iam:CreateServiceLinkedRole",
+        "Resource": "*",
+        "Condition": {
+          "StringEquals": {
+            "iam:AWSServiceName": "access-analyzer.amazonaws.com"
+          }
+        }
       }
     ]
   }
@@ -144,6 +179,18 @@ end is the account's first non-root credential.
   exist yet — the two tier keys are the only keys this account will ever
   hold, so `*` covers exactly them; tighten to the two ARNs after the IAM
   module creates them if wanted.
+
+  The four `Guardrail*` statements (#232) let the key apply ADR-0027's
+  guardrail resources, which live in the break-glass `iam/` module so
+  `infra-apply` gains nothing. Per-service wildcards
+  (`budgets:*`/`cloudtrail:*`/`access-analyzer:*`) for the same
+  whole-lifecycle reason as the `iam:` list above; `s3:*` is confined to
+  the `infra-cloudtrail-*` name prefix — #234's trail bucket must be
+  named under it — plus the two account-level public-access-block
+  actions, which take no ARN. `iam:CreateServiceLinkedRole` is
+  condition-pinned to Access Analyzer's service principal rather than
+  joining the `IamBootstrap` list, so the key can't mint SLRs for
+  arbitrary services.
 
 - **Store the access key in the login Keychain, gated** — one item
   holding both halves:
