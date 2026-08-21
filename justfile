@@ -25,8 +25,10 @@ format:
 # fetched from SSM at invocation via the Keychain-gated wrapper (#126,
 # ADR-0010; the never-ambient rule is #59/ADR-0009) — expect one Keychain
 # "Allow" prompt (infra-aws-local-apply). GITHUB_TOKEN comes from the
-# routine GH_TOKEN alias (.envrc), unchanged.
+# routine GH_TOKEN alias (.envrc), unchanged. Rejects a leading apply/destroy
+# — mutations ride tofu-apply's --gh-admin elevation (ADR-0013, #255).
 tofu *args:
+    @case "{{ args }}" in (apply|apply\ *|destroy|destroy\ *) echo "error: 'just tofu {{ args }}' runs the routine PAT — mutations go through 'just tofu-apply' (#255)" >&2; exit 1 ;; esac
     scripts/with-infra-secrets.sh tofu {{ args }}
 
 # The IAM/OIDC/KMS bootstrap module (ADR-0010): separate state in the same
