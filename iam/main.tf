@@ -150,8 +150,20 @@ resource "aws_iam_role_policy" "apply" {
   name = "read-write-infra-tier"
   role = aws_iam_role.apply.id
   policy = jsonencode({
-    Version   = "2012-10-17"
-    Statement = concat(local.infra_read_statements, local.infra_write_statements)
+    Version = "2012-10-17"
+    Statement = concat(local.infra_read_statements, local.infra_write_statements, [
+      {
+        # Bare us-east-1 pin, no global-service exception — vacuous under
+        # this role (#237, #230 N7). Doesn't self-lock: bootstrap edits this policy.
+        Sid      = "DenyOutsideHomeRegion"
+        Effect   = "Deny"
+        Action   = "*"
+        Resource = "*"
+        Condition = {
+          StringNotEquals = { "aws:RequestedRegion" = "us-east-1" }
+        }
+      },
+    ])
   })
 }
 
