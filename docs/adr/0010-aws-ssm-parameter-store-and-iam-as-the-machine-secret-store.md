@@ -450,3 +450,65 @@ fixes the instance, not the class); relocating the token to a non-`/runtime/`
 prefix (also fixes the class, but touches `vend-token.yml`, the dispatch
 container, and `infra-dispatch-read`, and a third prefix muddies this ADR's
 `/infra` vs `/runtime` split).
+
+## Amendment — #272 (2026-08-20): a third tier, `/cicd`, for agent-memory-server's CI-apply seam
+
+agent-memory-server is moving to full CI apply for its own `terraform/`
+(consumer-side Neon project/role/db, a consumer-owned Cloud Run Service,
+and `/runtime/agent-memory/*` writes). That needs bootstrap secrets no
+existing row covers: neither infra's own crown jewels (`/infra/*`) nor a
+consumer-created rotating value (`/runtime/*`), but **infra-provisioned,
+break-glass-applied, consumer-CI-read** — a third row this ADR's matrix
+never had a slot for (ADR-0016's #272 amendment names the same gap in the
+residency tree).
+
+**`/cicd/*` — break-glass-provisioned, consumer-CI-read.** Own KMS key,
+`alias/cicd-secrets`, distinct from both `alias/infra-secrets` and
+`alias/runtime-secrets` — load-bearing, not convenience: folding it into
+the runtime tier would let `agent-memory-ssm-read`'s runtime SA decrypt
+the state passphrase. Contents (`iam/main.tf`, mirroring `/infra`'s own
+R2+state set): `neon-api-key` (a second, account-global Neon key —
+containment/rotation independence from `/infra/neon-api-key`, not
+isolation, since Neon keys aren't project-scopable), `tf-state-passphrase`
+(agent-memory-server's own state, needed at plan and apply), and the
+RO/RW R2 credential pairs + account id for its dedicated state bucket
+(`cloudflare.tf`'s `agent_memory_tofu_state`, the same sanctioned R2
+model as `tofu_state`). Applied only by `iam/`'s break-glass root module —
+`infra-apply` never touches `/cicd`, the same "IAM/KMS/SSM trust roots
+stay out of the CI-applied state" reasoning as this ADR's original
+`iam/` split.
+
+**Two new roles**, same OIDC/ID-pinned-sub shape as `infra-plan-read`/
+`infra-apply`, trust-pinned to `repo:carpet-stain@5483606/agent-memory-server@1337947129`:
+
+| Role                     | `/cicd/agent-memory/*` read   | `/runtime/agent-memory/*` | Held by                                            |
+| ------------------------ | ----------------------------- | ------------------------- | -------------------------------------------------- |
+| `agent-memory-plan-read` | RO-token params only (5 of 7) | read                      | agent-memory-server's plan CI (`pull_request` sub) |
+| `agent-memory-apply`     | RW-token params only (5 of 7) | read/write                | agent-memory-server's apply CI (`main` sub)        |
+
+Neither role gets the other's R2 token — the same RO/RW split
+`infra-plan-read`/`infra-apply` already enforce on `/infra/*`'s own R2
+pair. `/runtime/agent-memory/*` read is necessary at plan too: those are
+tofu-managed `aws_ssm_parameter` resources in agent-memory-server's own
+`terraform/`, so a `tofu plan` refreshes them. No S3 grant on either role
+— state is R2, reached via the token in `/cicd`, not AWS IAM.
+
+**GCP plan-read is a distinct WIF provider**, not a widening of the
+existing `#227` deploy provider: its `attribute_condition` pins the
+`pull_request` sub only, read-only `run.viewer`, so a PR-triggered plan
+job can never present the apply-only main-branch sub. Apply reuses
+`agent-memory-deploy` (`run.developer`) unchanged.
+
+**The `allUsers` invoker binding is out of scope here** — ADR-0026
+commits the Service to `allUsers`-invocable, but that binding needs
+`run.services.setIamPolicy` (`run.admin`), which `agent-memory-deploy`
+deliberately doesn't hold. It's applied out-of-band from infra's own
+break-glass `gcp/`, riding #250's post-deploy reachability seam — the
+routine CI cred stays minimal.
+
+ADR-0010's original invariant (no silently-readable local identity
+resolves `kms:Decrypt` on `alias/infra-secrets`) is untouched: `/cicd`
+introduces no local reader, and its own key is a third, independent
+fence — a role must hold the `/cicd` path grant _and_ `kms:Decrypt` on
+`alias/cicd-secrets` to read a value, same two-independent-boundaries
+shape as the original `/infra`/`/runtime` split.

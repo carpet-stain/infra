@@ -22,7 +22,20 @@ locals {
     "repo:carpet-stain@5483606/dotfiles@247179961:pull_request",
   ]
 
+  # agent-memory-server's own CI-apply seam (#272) — same ID-pinning
+  # discipline as infra's own subs above.
+  amem_sub_prefix = "repo:carpet-stain@5483606/agent-memory-server@1337947129"
+  amem_sub_main   = "${local.amem_sub_prefix}:ref:refs/heads/main"
+  amem_sub_pr     = "${local.amem_sub_prefix}:pull_request"
+
   ssm_param_arn = "arn:aws:ssm:us-east-1:${data.aws_caller_identity.this.account_id}:parameter"
+
+  # /cicd/agent-memory/* — split by plan (RO token) vs apply (RW token);
+  # neither role gets the other's. See ADR-0010's #272 amendment.
+  cicd_amem_param_arn         = "${local.ssm_param_arn}/cicd/agent-memory"
+  cicd_amem_plan_read_params  = ["neon-api-key", "tf-state-passphrase", "r2-plan-access-key-id", "r2-plan-storage-token", "r2-account-id"]
+  cicd_amem_apply_params      = ["neon-api-key", "tf-state-passphrase", "r2-apply-access-key-id", "r2-apply-storage-token", "r2-account-id"]
+  runtime_amem_param_wildcard = "${local.ssm_param_arn}/runtime/agent-memory/*"
 
   # Read grants mirror plan/apply parity (ADR-0010); DescribeParameters is
   # metadata-only and unscopable, so its wildcard exposes no values.
@@ -93,6 +106,49 @@ resource "aws_kms_key" "runtime_secrets" {
 resource "aws_kms_alias" "runtime_secrets" {
   name          = "alias/runtime-secrets"
   target_key_id = aws_kms_key.runtime_secrets.key_id
+}
+
+# Separate from alias/runtime-secrets on purpose: folding /cicd in would
+# let agent-memory-ssm-read decrypt the state passphrase (ADR-0010 #272).
+resource "aws_kms_key" "cicd_secrets" {
+  description         = "Encrypts /cicd/* SSM parameters — break-glass-provisioned, consumer-CI-read tier (ADR-0010/ADR-0016, #272)"
+  enable_key_rotation = true
+}
+
+resource "aws_kms_alias" "cicd_secrets" {
+  name          = "alias/cicd-secrets"
+  target_key_id = aws_kms_key.cicd_secrets.key_id
+}
+
+# --- /cicd/agent-memory/* parameters (#272) ---------------------------------
+
+# Bootstrap-populated (docs/BOOTSTRAP.md §19), same placeholder shape as
+# /infra/* (ssm.tf) — but here, not there: this tier is break-glass-only.
+
+locals {
+  cicd_amem_parameters = {
+    "neon-api-key"           = "Second, account-global Neon API key (#272) — agent-memory-server CI's neon provider; containment/rotation-independent from /infra/neon-api-key, not isolation"
+    "tf-state-passphrase"    = "OpenTofu state encryption passphrase for agent-memory-server's own R2 state (#272) — read by both plan and apply, same shape as /infra/tf-state-passphrase"
+    "r2-plan-access-key-id"  = "R2 Object-Read-only S3 access key id for agent_memory_tofu_state (#272, plan-read)"
+    "r2-plan-storage-token"  = "R2 Object-Read-only token — agent-memory-server's CI sha256s it into the S3 secret (ADR-0002 pattern)"
+    "r2-apply-access-key-id" = "R2 Object Read & Write S3 access key id for agent_memory_tofu_state (#272, apply)"
+    "r2-apply-storage-token" = "R2 Object Read & Write token — agent-memory-server's CI sha256s it into the S3 secret (ADR-0002 pattern)"
+    "r2-account-id"          = "Cloudflare account id — forms agent-memory-server's R2 S3 endpoint, never hardcoded in that public repo"
+  }
+}
+
+resource "aws_ssm_parameter" "cicd_amem" {
+  for_each = local.cicd_amem_parameters
+
+  name        = "/cicd/agent-memory/${each.key}"
+  description = each.value
+  type        = "SecureString"
+  key_id      = aws_kms_alias.cicd_secrets.name
+  value       = "PLACEHOLDER"
+
+  lifecycle {
+    ignore_changes = [value]
+  }
 }
 
 # --- CI roles (OIDC-assumed, no standing credential) -----------------------
@@ -401,6 +457,125 @@ resource "aws_iam_role_policy" "agent_memory_ssm_read" {
         Effect   = "Allow"
         Action   = "ssm:GetParameter"
         Resource = "${local.ssm_param_arn}/runtime/agent-memory/*"
+      },
+      {
+        Sid      = "DecryptRuntimeTier"
+        Effect   = "Allow"
+        Action   = "kms:Decrypt"
+        Resource = aws_kms_key.runtime_secrets.arn
+      },
+    ]
+  })
+}
+
+# --- agent-memory-server CI-apply seam (OIDC-assumed, #272) ----------------
+
+# Same shape as infra-plan-read/infra-apply above; no S3 grant — state is
+# R2, reached via the token in /cicd, not this role.
+
+resource "aws_iam_role" "agent_memory_plan_read" {
+  name = "agent-memory-plan-read"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Federated = aws_iam_openid_connect_provider.github.arn }
+      Action    = "sts:AssumeRoleWithWebIdentity"
+      Condition = {
+        StringEquals = {
+          "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
+          "token.actions.githubusercontent.com:sub" = local.amem_sub_pr
+        }
+      }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "agent_memory_plan_read" {
+  name = "read-cicd-and-runtime-agent-memory"
+  role = aws_iam_role.agent_memory_plan_read.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid      = "ReadCicdAgentMemoryPlanParameters"
+        Effect   = "Allow"
+        Action   = "ssm:GetParameter"
+        Resource = [for p in local.cicd_amem_plan_read_params : "${local.cicd_amem_param_arn}/${p}"]
+      },
+      {
+        Sid      = "DecryptCicdTier"
+        Effect   = "Allow"
+        Action   = "kms:Decrypt"
+        Resource = aws_kms_key.cicd_secrets.arn
+      },
+      {
+        # Consumer-owned, tofu-managed aws_ssm_parameter resources
+        # (agent-memory-server's ssm.tf) — a plan refreshes them, read-only.
+        Sid      = "ReadRuntimeAgentMemoryParameters"
+        Effect   = "Allow"
+        Action   = "ssm:GetParameter"
+        Resource = local.runtime_amem_param_wildcard
+      },
+      {
+        Sid      = "DecryptRuntimeTier"
+        Effect   = "Allow"
+        Action   = "kms:Decrypt"
+        Resource = aws_kms_key.runtime_secrets.arn
+      },
+    ]
+  })
+}
+
+resource "aws_iam_role" "agent_memory_apply" {
+  name = "agent-memory-apply"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Federated = aws_iam_openid_connect_provider.github.arn }
+      Action    = "sts:AssumeRoleWithWebIdentity"
+      Condition = {
+        StringEquals = {
+          "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
+          "token.actions.githubusercontent.com:sub" = local.amem_sub_main
+        }
+      }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "agent_memory_apply" {
+  name = "read-write-cicd-and-runtime-agent-memory"
+  role = aws_iam_role.agent_memory_apply.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid      = "ReadCicdAgentMemoryApplyParameters"
+        Effect   = "Allow"
+        Action   = "ssm:GetParameter"
+        Resource = [for p in local.cicd_amem_apply_params : "${local.cicd_amem_param_arn}/${p}"]
+      },
+      {
+        Sid      = "DecryptCicdTier"
+        Effect   = "Allow"
+        Action   = "kms:Decrypt"
+        Resource = aws_kms_key.cicd_secrets.arn
+      },
+      {
+        # Full lifecycle (create/update/delete) on the consumer's own
+        # aws_ssm_parameter resources — this role is that tofu's apply identity.
+        Sid      = "ReadWriteRuntimeAgentMemoryParameters"
+        Effect   = "Allow"
+        Action   = ["ssm:GetParameter", "ssm:PutParameter", "ssm:DeleteParameter", "ssm:AddTagsToResource", "ssm:RemoveTagsFromResource"]
+        Resource = local.runtime_amem_param_wildcard
+      },
+      {
+        Sid      = "EncryptRuntimeTier"
+        Effect   = "Allow"
+        Action   = ["kms:Encrypt", "kms:GenerateDataKey"]
+        Resource = aws_kms_key.runtime_secrets.arn
       },
       {
         Sid      = "DecryptRuntimeTier"

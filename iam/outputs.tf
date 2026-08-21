@@ -36,3 +36,13 @@ output "agent_memory_ssm_read_role_arn" {
   value       = aws_iam_role.agent_memory_ssm_read.arn
   description = "The memory Service's AWS_ROLE_ARN env — consumed by agent-memory-server's deploy (ADR-0026, #240)."
 }
+
+output "agent_memory_plan_read_role_arn" {
+  value       = aws_iam_role.agent_memory_plan_read.arn
+  description = "agent-memory-server's CI plan-read role ARN — its tofu-plan workflow (#272)."
+}
+
+output "agent_memory_apply_role_arn" {
+  value       = aws_iam_role.agent_memory_apply.arn
+  description = "agent-memory-server's CI apply role ARN — its tofu-apply workflow (#272)."
+}

@@ -62,8 +62,12 @@ assigns every new secret to exactly one of them.
 
 ### Decision tree — where does a new secret go?
 
-- **Fetched by automation?** → SSM: `/infra/*` if long-lived/high-value,
-  `/runtime/*` if rotating (ADR-0010).
+- **Fetched by automation, infra's own?** → SSM: `/infra/*` if
+  long-lived/high-value, `/runtime/*` if rotating (ADR-0010).
+- **Fetched by automation, break-glass-provisioned for a consumer repo's
+  own CI to read?** → SSM `/cicd/*` — a third machine sub-tier, own KMS
+  key, applied only by `iam/`'s break-glass root module (ADR-0010's #272
+  amendment).
 - **Human login that's just username + password + 2FA?** → iCloud.
 - **Human secret beyond that triad** (recovery codes, a free-form string,
   a file, break-glass)? → Bitwarden vault.
@@ -184,3 +188,19 @@ automation that isn't this machine.
   (→ `/runtime/openrouter`), or if Apple-ID compromise exposure ever
   warrants splitting the human default off the same trust domain as the
   Keychain tier.
+
+## Amendment — #272 (2026-08-20): a third machine sub-tier, `/cicd`
+
+The machine tier (tier 1) assumed exactly two SSM paths — `/infra/*` and
+`/runtime/*` — a binary the decision tree's "fetched by automation?"
+branch inherited unchanged. agent-memory-server's CI-apply seam (#272)
+needs a third shape: bootstrap secrets that are neither infra's own
+crown jewels nor a consumer-created rotating value, but
+**infra-provisioned, break-glass-applied, and consumer-CI-read**. The
+tree above is amended to name it as its own branch rather than stretch
+`/infra`'s "long-lived/high-value" test to cover a value another repo's
+CI reads.
+
+Full role×path spec (which SSM paths, which OIDC roles, which KMS key)
+is ADR-0010's own #272 amendment; this ADR only records the tier's place
+in the residency tree. Nothing else in the tree changes.

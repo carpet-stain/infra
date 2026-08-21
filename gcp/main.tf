@@ -214,3 +214,44 @@ resource "google_service_account_iam_member" "agent_memory_deploy_act_as_runtime
   role               = "roles/iam.serviceAccountUser"
   member             = "serviceAccount:${google_service_account.agent_memory_deploy.email}"
 }
+
+# --- agent-memory-server plan-read (ADR-0010/ADR-0016's /cicd seam, #272) --
+
+# A distinct WIF provider, not a widening of github-oidc above: its
+# attribute_condition pins the PR sub only, never the deploy main-branch one.
+resource "google_iam_workload_identity_pool_provider" "github_agent_memory_plan_read" {
+  workload_identity_pool_id          = google_iam_workload_identity_pool.github.workload_identity_pool_id
+  workload_identity_pool_provider_id = "github-oidc-amem-plan-read"
+  display_name                       = "GitHub OIDC — agent-memory-server plan-read"
+
+  oidc {
+    issuer_uri = "https://token.actions.githubusercontent.com"
+  }
+
+  attribute_mapping = {
+    "google.subject" = "assertion.sub"
+  }
+
+  attribute_condition = "assertion.sub == '${var.agent_memory_plan_read_sub}'"
+}
+
+resource "google_service_account" "agent_memory_plan_read" {
+  account_id   = "agent-memory-plan-read"
+  display_name = "agent-memory-server CI plan-read via GitHub WIF (#272)"
+}
+
+resource "google_service_account_iam_member" "agent_memory_plan_read_wif" {
+  service_account_id = google_service_account.agent_memory_plan_read.name
+  role               = "roles/iam.workloadIdentityUser"
+  member             = "principal://iam.googleapis.com/${google_iam_workload_identity_pool.github.name}/subject/${var.agent_memory_plan_read_sub}"
+
+  depends_on = [google_project_service.iamcredentials]
+}
+
+# Project scope, same reasoning as agent_memory_deploy_run above — the
+# Service doesn't exist yet in this project's tofu.
+resource "google_project_iam_member" "agent_memory_plan_read_run" {
+  project = var.google_project_id
+  role    = "roles/run.viewer"
+  member  = "serviceAccount:${google_service_account.agent_memory_plan_read.email}"
+}
