@@ -28,8 +28,6 @@ do, ADR-0004) — no classic PAT required. The classic-only endpoint
 documented in `app.tf` (`github_app_installation_repository`) stopped
 mattering when that resource left tofu management.
 
-Repo creation no longer works as validated here — see #238.
-
 ## Decision
 
 The admin credential is a **fine-grained PAT** — Administration, Issues, and
