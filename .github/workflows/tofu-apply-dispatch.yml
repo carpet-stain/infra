@@ -17,6 +17,9 @@ jobs:
   apply:
     name: tofu apply (fresh plan)
     runs-on: ubuntu-latest
+    # Required-reviewer Environment (main.tf): the run pauses for a human
+    # approval, so actions:write alone can't apply main (#246).
+    environment: tofu-apply-dispatch
     # Job-scoped per ADR-0010's step 5 — a workflow_dispatch run on main
     # presents the same branch-ref sub as a merge apply, so it assumes the
     # same infra-apply role.
