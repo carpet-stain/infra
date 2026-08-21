@@ -103,7 +103,14 @@ specifically.
   new code changes, or recovering from the "no matching artifact" failure
   above), a `workflow_dispatch` "apply main" job runs a fresh plan+apply
   pair directly against `main`, gated on the same elevated credential and
-  concurrency group. A crashed apply that leaves a stale R2 lockfile is
+  concurrency group. Amended by #246: the dispatch job also runs in the
+  `tofu-apply-dispatch` Environment (required reviewer, tofu-managed in
+  `main.tf`), so a dispatch pauses until a human approves. `actions:write`
+  is the minimum GitHub permission that can dispatch at all — ADR-0024's
+  `infra-dispatch-token` holds exactly that — so token minimality can't
+  fence this path; the approval makes one over-granted token insufficient
+  to apply `main` alone, the defense-in-depth layer on top of #243's IAM
+  narrowing. A crashed apply that leaves a stale R2 lockfile is
   cleared with `tofu force-unlock <id>`, done deliberately and by hand — not
   automated, since an automated unlock defeats the lock's purpose. Apply
   logs are CI job output, retained by GitHub's normal workflow-run

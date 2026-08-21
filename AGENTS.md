@@ -142,7 +142,8 @@ the merge landed a different SHA than the one last planned. Push a fresh
 commit to re-plan before merging, or run `tofu-apply-dispatch.yml` ("Tofu
 apply (manual)" in the Actions tab — a fresh plan+apply pair against
 current `main`, no saved artifact needed) after the fact — never revert
-the merge.
+the merge. The dispatch run pauses in the `tofu-apply-dispatch` Environment
+until a required reviewer approves it (#246, ADR-0003).
 
 **A crashed apply leaving a stale R2 lockfile**: cleared by hand with
 `just tofu force-unlock <id>` (the id is in the error message; only the

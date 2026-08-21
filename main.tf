@@ -194,3 +194,18 @@ resource "github_repository_ruleset" "this" {
     }
   }
 }
+
+data "github_user" "owner" {
+  username = "carpet-stain"
+}
+
+# Gates tofu-apply-dispatch.yml's manual apply behind a human approval, so
+# actions:write alone can't reach infra-apply (#246; ADR-0003's escape hatch).
+resource "github_repository_environment" "tofu_apply_dispatch" {
+  repository  = github_repository.this["infra"].name
+  environment = "tofu-apply-dispatch"
+
+  reviewers {
+    users = [data.github_user.owner.id]
+  }
+}
