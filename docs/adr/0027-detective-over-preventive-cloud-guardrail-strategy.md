@@ -6,6 +6,9 @@ Date: 2026-08-20
 
 Accepted
 
+Amended: 2026-08-20 — generalized the stance to any later-adopted cloud
+account, not just AWS/GCP (Consequences) (#275).
+
 ## Context
 
 The AWS account has solid identity hygiene — least-privilege OIDC roles and
@@ -95,6 +98,12 @@ email-only, no Pub/Sub topic.
 - Root and `infra-console-admin` stay outside any SCP fence — accepted;
   their protection remains the human ceremony ADR-0015 records (MFA,
   break-glass, no programmatic keys).
+- **Generalizes to any later-adopted cloud account, not just AWS/GCP:**
+  guardrails to the vendor's ceiling — best-effort, bounded by what the
+  vendor supports (small vendors can't mirror CloudTrail-class controls) —
+  thresholds sized per vendor. Consistent with ADR-0014 §6's "wire an alert
+  only where the vendor exposes one"; ADR-0014 §5 Q11 forces the
+  adoption-time review.
 - **Revisit if** a second account appears (Organizations becomes able to
   fence the first), real spend exists (Cost Anomaly Detection becomes
   useful), or workloads/data worth threat-hunting land (GuardDuty).

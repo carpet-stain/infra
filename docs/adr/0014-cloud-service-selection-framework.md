@@ -6,6 +6,9 @@ Date: 2026-08-13
 
 Accepted
 
+Amended: 2026-08-20 — added §5 Q11, the adoption-time spend-alert /
+safety-control checklist question (#275).
+
 ## Context
 
 Provider and service choices across the personal-project stack have been made
@@ -172,6 +175,9 @@ Answer in the adopting ADR before taking on any new service:
 10. Vendor security posture: what does the vendor say about its own security
     (SOC 2 / breach history / access controls) for the data this service will
     hold?
+11. What spend alerts and account-level safety controls does this vendor
+    support, and which land at adoption (per ADR-0027's stance)? (§6 covers
+    the ongoing spend-alert posture.)
 
 ### 6. Ongoing review — the decay check
 

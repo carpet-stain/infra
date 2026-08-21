@@ -31,6 +31,8 @@ question with no answer.
    path, or only a migration tool run by hand?:
 10. **Vendor security posture** — SOC 2 / breach history / access controls
     for the data this service will hold:
+11. **Spend alerts / safety controls** — what the vendor supports, and which
+    land at adoption (per ADR-0027's stance)? Ongoing posture is §6, not here:
 
 ## Decision
 
