@@ -514,8 +514,16 @@ resource "aws_iam_role_policy" "agent_memory_plan_read" {
         # (agent-memory-server's ssm.tf) — a plan refreshes them, read-only.
         Sid      = "ReadRuntimeAgentMemoryParameters"
         Effect   = "Allow"
-        Action   = "ssm:GetParameter"
+        Action   = ["ssm:GetParameter", "ssm:ListTagsForResource"]
         Resource = local.runtime_amem_param_wildcard
+      },
+      {
+        # The provider reads metadata on refresh — mirrors the infra roles'
+        # statement above; unscopable, exposes names not values.
+        Sid      = "DescribeParameterMetadata"
+        Effect   = "Allow"
+        Action   = "ssm:DescribeParameters"
+        Resource = "*"
       },
       {
         Sid      = "DecryptRuntimeTier"
@@ -568,8 +576,15 @@ resource "aws_iam_role_policy" "agent_memory_apply" {
         # aws_ssm_parameter resources — this role is that tofu's apply identity.
         Sid      = "ReadWriteRuntimeAgentMemoryParameters"
         Effect   = "Allow"
-        Action   = ["ssm:GetParameter", "ssm:PutParameter", "ssm:DeleteParameter", "ssm:AddTagsToResource", "ssm:RemoveTagsFromResource"]
+        Action   = ["ssm:GetParameter", "ssm:ListTagsForResource", "ssm:PutParameter", "ssm:DeleteParameter", "ssm:AddTagsToResource", "ssm:RemoveTagsFromResource"]
         Resource = local.runtime_amem_param_wildcard
+      },
+      {
+        # Same refresh-metadata need as plan-read — see that role's statement.
+        Sid      = "DescribeParameterMetadata"
+        Effect   = "Allow"
+        Action   = "ssm:DescribeParameters"
+        Resource = "*"
       },
       {
         Sid      = "EncryptRuntimeTier"
