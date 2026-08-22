@@ -467,9 +467,9 @@ residency tree).
 `alias/runtime-secrets` — load-bearing, not convenience: folding it into
 the runtime tier would let `agent-memory-ssm-read`'s runtime SA decrypt
 the state passphrase. Contents (`iam/main.tf`, mirroring `/infra`'s own
-R2+state set): `neon-api-key` (a second, account-global Neon key —
-containment/rotation independence from `/infra/neon-api-key`, not
-isolation, since Neon keys aren't project-scopable), `tf-state-passphrase`
+R2+state set): `neon-api-key` (a second Neon key — containment/rotation
+independence from `/infra/neon-api-key`; see the #284 amendment below for
+its scope), `tf-state-passphrase`
 (agent-memory-server's own state, needed at plan and apply), and the
 RO/RW R2 credential pairs + account id for its dedicated state bucket
 (`cloudflare.tf`'s `agent_memory_tofu_state`, the same sanctioned R2
@@ -477,6 +477,10 @@ model as `tofu_state`). Applied only by `iam/`'s break-glass root module —
 `infra-apply` never touches `/cicd`, the same "IAM/KMS/SSM trust roots
 stay out of the CI-applied state" reasoning as this ADR's original
 `iam/` split.
+
+Amended: 2026-08-22 — see the #284 amendment below: `neon-api-key` here was
+account-global because Neon keys were believed unscopable; that premise
+was false, and the reshape moves this row to a project-scoped key.
 
 **Two new roles**, same OIDC/ID-pinned-sub shape as `infra-plan-read`/
 `infra-apply`, trust-pinned to `repo:carpet-stain@5483606/agent-memory-server@1337947129`:
@@ -539,3 +543,24 @@ The same rule reaches GCP: `gcp/`'s `agent-memory-deploy` WIF provider
 condition and SA binding are subject-pinned to the deploy ref sub, so
 both also carry the dispatch environment sub — the trust basis is
 identical on both clouds.
+
+## Amendment — #284 (2026-08-22): the `/cicd` Neon key is project-scoped, not account-global
+
+The #272 amendment above assumed Neon API keys can't be scoped narrower
+than the whole account — false. A Neon **Organization** (not a personal
+account) mints **project-scoped** keys, Editor-role, unable to read,
+enumerate, or reach any project but the one they're scoped to (verified
+live, [0029](0029-adopt-a-neon-organization-with-project-scoped-keys-for-consumer-isolation.md)).
+
+`/cicd/agent-memory/neon-api-key`'s **residency is unchanged** — still
+break-glass-provisioned, consumer-CI-read, same KMS key and role split.
+What changes is the value's **scope**: a project-scoped key instead of a
+second account-global one, once #272's CI-apply seam is reshaped to
+match. Project creation/deletion isn't reachable by any project-scoped
+key, so it moves to an org-admin key held at `/infra` — a crown-jewel row
+this ADR's original matrix (line 90) already models, not a new one.
+
+No read-only project-scoped role exists (`0029`'s accepted residual): the
+`/cicd` key is a writer, so a PR-triggered plan-read job can write or
+destroy its own project's data, never another's. Accepted for the same
+reason `0029` accepts it — solo repo, no untrusted fork PRs.
