@@ -25,6 +25,10 @@ locals {
     "repo:carpet-stain@5483606/dotfiles@247179961:pull_request",
   ]
 
+  # dotfiles' hosted runtime (#217, dotfiles#596/#576): issue_comment/issues
+  # aren't PR-associated, so the sub is the default-branch ref form.
+  dotfiles_hosted_runtime_sub = "repo:carpet-stain@5483606/dotfiles@247179961:ref:refs/heads/main"
+
   # agent-memory-server's own CI-apply seam (#272) — same ID-pinning
   # discipline as infra's own subs above.
   amem_sub_prefix = "repo:carpet-stain@5483606/agent-memory-server@1337947129"
@@ -374,6 +378,51 @@ resource "aws_iam_role_policy" "pr_review_openrouter_read" {
         Effect   = "Allow"
         Action   = "ssm:GetParameter"
         Resource = "${local.ssm_param_arn}/runtime/openrouter-api-key"
+      },
+      {
+        Sid      = "DecryptRuntimeTier"
+        Effect   = "Allow"
+        Action   = "kms:Decrypt"
+        Resource = aws_kms_key.runtime_secrets.arn
+      },
+    ]
+  })
+}
+
+# dotfiles' hosted runtime (#217, BOOTSTRAP.md §14): fail-loud verification
+# of the assumed role is the consuming workflow's job, not this policy's (#227).
+resource "aws_iam_role" "dotfiles_hosted_runtime_read" {
+  name = "dotfiles-hosted-runtime-read"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Federated = aws_iam_openid_connect_provider.github.arn }
+      Action    = "sts:AssumeRoleWithWebIdentity"
+      Condition = {
+        StringEquals = {
+          "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
+          "token.actions.githubusercontent.com:sub" = local.dotfiles_hosted_runtime_sub
+        }
+      }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "dotfiles_hosted_runtime_read" {
+  name = "read-agent-anthropic-keys"
+  role = aws_iam_role.dotfiles_hosted_runtime_read.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "ReadAgentAnthropicKeysOnly"
+        Effect = "Allow"
+        Action = "ssm:GetParameter"
+        Resource = [
+          "${local.ssm_param_arn}/runtime/backlog-manager-anthropic-key",
+          "${local.ssm_param_arn}/runtime/plan-reviewer-anthropic-key",
+        ]
       },
       {
         Sid      = "DecryptRuntimeTier"

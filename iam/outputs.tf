@@ -27,6 +27,11 @@ output "pr_review_openrouter_read_role_arn" {
   description = "Seed as vars.AWS_OPENROUTER_ROLE_ARN on agents and dotfiles — their pr-code-review.yml workflows (#220)."
 }
 
+output "dotfiles_hosted_runtime_read_role_arn" {
+  value       = aws_iam_role.dotfiles_hosted_runtime_read.arn
+  description = "Seed as vars.AWS_HOSTED_RUNTIME_ROLE_ARN on dotfiles — its hosted agent runtime workflow (#217, dotfiles#576)."
+}
+
 output "dispatch_read_role_arn" {
   value       = aws_iam_role.dispatch_read.arn
   description = "Feed into gcp/'s TF_VAR_aws_dispatch_role_arn — the Cloud Run Job's AWS_ROLE_ARN env (ADR-0024, #191)."
