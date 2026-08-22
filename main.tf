@@ -199,10 +199,8 @@ data "github_user" "owner" {
   username = "carpet-stain"
 }
 
-# Gates tofu-apply-dispatch.yml's manual apply behind a human approval, so
-# actions:write alone can't reach infra-apply (#246; ADR-0003's escape hatch).
-# Load-bearing for the role trust, not just UX: infra-apply also accepts the
-# :environment: sub, which carries no ref (ADR-0010's dispatch amendment).
+# Approval gate for tofu-apply-dispatch.yml — load-bearing for infra-apply's
+# ref-less :environment: sub trust, not just UX (#246; ADR-0010).
 resource "github_repository_environment" "tofu_apply_dispatch" {
   repository  = github_repository.this["infra"].name
   environment = "tofu-apply-dispatch"
@@ -219,9 +217,8 @@ resource "github_repository_environment" "tofu_apply_dispatch" {
   }
 }
 
-# agent-memory-server's twin (its tofu-apply-dispatch.yml / agent-memory-apply
-# role) — as-code so a delete-and-recreate of the name-keyed environment
-# can't silently shed the reviewer while the sub stays trusted.
+# agent-memory-server's twin — as-code so recreating the name-keyed
+# environment can't shed the reviewer while the sub stays trusted (ADR-0010).
 resource "github_repository_environment" "amem_tofu_apply_dispatch" {
   repository  = github_repository.this["agent-memory-server"].name
   environment = "tofu-apply-dispatch"
