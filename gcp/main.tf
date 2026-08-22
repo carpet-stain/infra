@@ -161,6 +161,12 @@ resource "google_iam_workload_identity_pool" "github" {
   depends_on = [google_project_service.sts]
 }
 
+# The deploy sub with GitHub's environment tail — approval-gated, not
+# ref-gated (ADR-0010's dispatch amendment).
+locals {
+  agent_memory_dispatch_sub = replace(var.agent_memory_deploy_sub, ":ref:refs/heads/main", ":environment:tofu-apply-dispatch")
+}
+
 # attribute_condition duplicates the SA binding's subject pin on purpose —
 # a future too-wide binding still can't trust a sub outside it (#227 fail-loud).
 resource "google_iam_workload_identity_pool_provider" "github" {
@@ -176,7 +182,7 @@ resource "google_iam_workload_identity_pool_provider" "github" {
     "google.subject" = "assertion.sub"
   }
 
-  attribute_condition = "assertion.sub == '${var.agent_memory_deploy_sub}'"
+  attribute_condition = "assertion.sub == '${var.agent_memory_deploy_sub}' || assertion.sub == '${local.agent_memory_dispatch_sub}'"
 }
 
 resource "google_service_account" "agent_memory_deploy" {
@@ -188,6 +194,16 @@ resource "google_service_account_iam_member" "agent_memory_deploy_wif" {
   service_account_id = google_service_account.agent_memory_deploy.name
   role               = "roles/iam.workloadIdentityUser"
   member             = "principal://iam.googleapis.com/${google_iam_workload_identity_pool.github.name}/subject/${var.agent_memory_deploy_sub}"
+
+  depends_on = [google_project_service.iamcredentials]
+}
+
+# Impersonation is subject-pinned twice (provider condition + binding) —
+# the dispatch sub needs both, like the main-ref sub above.
+resource "google_service_account_iam_member" "agent_memory_deploy_wif_dispatch" {
+  service_account_id = google_service_account.agent_memory_deploy.name
+  role               = "roles/iam.workloadIdentityUser"
+  member             = "principal://iam.googleapis.com/${google_iam_workload_identity_pool.github.name}/subject/${local.agent_memory_dispatch_sub}"
 
   depends_on = [google_project_service.iamcredentials]
 }

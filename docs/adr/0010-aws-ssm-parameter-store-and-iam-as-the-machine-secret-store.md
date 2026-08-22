@@ -534,3 +534,8 @@ Fork runs can't present it at all (forks get no `id-token: write`).
 Rejected: dropping `environment:` from the dispatch workflows — a main
 dispatch then presents the already-trusted ref sub with no iam change,
 but removes the human gate, which is #246's whole point.
+
+The same rule reaches GCP: `gcp/`'s `agent-memory-deploy` WIF provider
+condition and SA binding are subject-pinned to the deploy ref sub, so
+both also carry the dispatch environment sub — the trust basis is
+identical on both clouds.
