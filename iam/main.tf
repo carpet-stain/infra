@@ -9,6 +9,9 @@ locals {
   gh_sub_prefix = "repo:carpet-stain@5483606/infra@1304594349"
   gh_sub_main   = "${local.gh_sub_prefix}:ref:refs/heads/main"
   gh_sub_pr     = "${local.gh_sub_prefix}:pull_request"
+  # Environment-gated jobs present :environment:<name>, not the ref — the
+  # sub customization is a prefix on GitHub's default claim (ADR-0010).
+  gh_sub_dispatch = "${local.gh_sub_prefix}:environment:tofu-apply-dispatch"
 
   # project-starter-template's own ID-pinned sub (#147, ADR-0010's #163
   # amendment) — its e2e-*.yml workflows are all workflow_dispatch on main.
@@ -27,6 +30,8 @@ locals {
   amem_sub_prefix = "repo:carpet-stain@5483606/agent-memory-server@1337947129"
   amem_sub_main   = "${local.amem_sub_prefix}:ref:refs/heads/main"
   amem_sub_pr     = "${local.amem_sub_prefix}:pull_request"
+  # Same environment-tail rule as gh_sub_dispatch above.
+  amem_sub_dispatch = "${local.amem_sub_prefix}:environment:tofu-apply-dispatch"
 
   ssm_param_arn = "arn:aws:ssm:us-east-1:${data.aws_caller_identity.this.account_id}:parameter"
 
@@ -195,7 +200,9 @@ resource "aws_iam_role" "apply" {
       Condition = {
         StringEquals = {
           "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
-          "token.actions.githubusercontent.com:sub" = local.gh_sub_main
+          # The dispatch sub is approval-gated, not ref-gated — the
+          # environment's reviewer + branch policy are load-bearing (ADR-0010).
+          "token.actions.githubusercontent.com:sub" = [local.gh_sub_main, local.gh_sub_dispatch]
         }
       }
     }]
@@ -546,7 +553,9 @@ resource "aws_iam_role" "agent_memory_apply" {
       Condition = {
         StringEquals = {
           "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
-          "token.actions.githubusercontent.com:sub" = local.amem_sub_main
+          # Same shape as infra-apply: ref sub or the approval-gated
+          # environment sub — see that role's comment.
+          "token.actions.githubusercontent.com:sub" = [local.amem_sub_main, local.amem_sub_dispatch]
         }
       }
     }]
