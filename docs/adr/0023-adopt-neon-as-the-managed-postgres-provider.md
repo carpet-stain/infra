@@ -6,6 +6,16 @@ Date: 2026-08-17
 
 Accepted
 
+Superseded by [0029. Adopt a Neon organization with project-scoped keys for
+consumer isolation](0029-adopt-a-neon-organization-with-project-scoped-keys-for-consumer-isolation.md)
+in status only — the provider pin, bootstrap-only scope, and management-key
+residency below carry forward unchanged. What changes: the Decision
+section's "project/role/`connection_uri`... consumer concern, created in
+the consumer's own state, never this one" no longer holds for
+`neon_project` — project lifecycle is an org-admin-key operation living in
+infra's own state under `0029`. Role/database/`connection_uri` stay the
+consumer's, as originally decided here.
+
 ## Context
 
 carpet-stain/dotfiles ADR-0046 (hosted per-role agent memory over
