@@ -429,6 +429,14 @@ resource "aws_iam_role_policy" "dotfiles_hosted_runtime_read" {
         ]
       },
       {
+        # The runner's own write identity, not an agent's — #305, same
+        # param + precedent as pst_e2e_read's own grant below.
+        Sid      = "ReadDispatchTokenOnly"
+        Effect   = "Allow"
+        Action   = "ssm:GetParameter"
+        Resource = "${local.ssm_param_arn}/runtime/vended-token"
+      },
+      {
         Sid      = "DecryptRuntimeTier"
         Effect   = "Allow"
         Action   = "kms:Decrypt"
