@@ -595,18 +595,19 @@ either as live, same as §13. **Not tofu-adopted**, same reasoning as §13
 allow-list (`iam/main.tf`, #243) — a new `/runtime/*` param needs adding
 to that list first, an `iam/` break-glass apply.
 
-**Fetch path, CI (dotfiles#596):** not wired yet. The hosted agent
-runtime dotfiles#596 defines doesn't exist yet, and ADR-0010's ID-pinning
-discipline (`iam/main.tf`'s header comment) forbids granting a repo-wide
-or org-wide OIDC sub wildcard just to have something in place early — a
-role has to pin the exact `sub` of a real workflow. Once #596's ADR firms
-and names the consuming repo/workflow, add a role shaped like
-`pst_e2e_read` (`iam/main.tf`): OIDC-assumed, ID-pinned `sub`, granted
+**Fetch path, CI (#217):** wired. dotfiles#596 (ADR-0048) firmed the hosted
+runtime and dotfiles#576's plan converged against it, so the role shaped
+like `pst_e2e_read` (`iam/main.tf`'s header comment) is built:
+`aws_iam_role.dotfiles_hosted_runtime_read`, OIDC-assumed, ID-pinned `sub`
+(`local.dotfiles_hosted_runtime_sub` — the default-branch ref form, since
+its `issue_comment`/`issues` triggers aren't PR-associated), granted
 `ssm:GetParameter` on the two key ARNs by name (not a `/runtime/*`
-wildcard) plus `kms:Decrypt` on `alias/runtime-secrets`. Until then, no
-Anthropic key is parked in Actions secrets — the standing-credential
-class ADR-0010 exists to eliminate stays eliminated by simply not
-building the CI leg ahead of its consumer.
+wildcard) plus `kms:Decrypt` on `alias/runtime-secrets`. Remaining step is
+dotfiles#576's own: once its workflow lands, seed the role ARN there
+(`dotfiles_hosted_runtime_read_role_arn` output → `vars.AWS_HOSTED_RUNTIME_ROLE_ARN`,
+same `a gh variable set` shape as §16) — and per #227's lesson, assert a
+non-empty credential rather than letting a failed assume-role sail through
+silently.
 
 ## 15. Neon Postgres account and management API key
 
