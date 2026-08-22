@@ -512,3 +512,25 @@ introduces no local reader, and its own key is a third, independent
 fence — a role must hold the `/cicd` path grant _and_ `kms:Decrypt` on
 `alias/cicd-secrets` to read a value, same two-independent-boundaries
 shape as the original `/infra`/`/runtime` split.
+
+## Amendment — dispatch environment subs (2026-08-22): apply-role trust is ref _or_ approval
+
+The `tofu-apply-dispatch.yml` escape hatches never worked as shipped: an
+environment-gated job presents `<sub-prefix>:environment:tofu-apply-dispatch`
+— the sub customization is a prefix on GitHub's _default_ claim, and the
+default claim for environment jobs drops the ref tail. Both apply roles
+(`infra-apply`, `agent-memory-apply`) now additionally trust their
+dispatch environment sub.
+
+This changes the trust basis from "push to protected main" to "main ref
+_or_ environment approval". The environment sub carries no ref, so the
+environment's protection rules are load-bearing parts of the role trust:
+a required reviewer (the approval gate) plus a protected-branches
+deployment policy (a non-main run can't even enter the approval queue).
+Both environments are managed in the CI root (`main.tf`) — as-code
+matters because the sub is name-keyed, so a deleted-and-recreated
+environment would present the same trusted sub with no protection.
+Fork runs can't present it at all (forks get no `id-token: write`).
+Rejected: dropping `environment:` from the dispatch workflows — a main
+dispatch then presents the already-trusted ref sub with no iam change,
+but removes the human gate, which is #246's whole point.
