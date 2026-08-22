@@ -410,18 +410,22 @@ resource "aws_iam_role" "dotfiles_hosted_runtime_read" {
 }
 
 resource "aws_iam_role_policy" "dotfiles_hosted_runtime_read" {
-  name = "read-agent-anthropic-keys"
+  name = "read-agent-credentials"
   role = aws_iam_role.dotfiles_hosted_runtime_read.id
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
       {
-        Sid    = "ReadAgentAnthropicKeysOnly"
+        # Named allow-list, never /runtime/* (#303: added the two PATs
+        # alongside #217's Anthropic keys, same narrow-by-name shape).
+        Sid    = "ReadAgentCredentialsOnly"
         Effect = "Allow"
         Action = "ssm:GetParameter"
         Resource = [
           "${local.ssm_param_arn}/runtime/backlog-manager-anthropic-key",
           "${local.ssm_param_arn}/runtime/plan-reviewer-anthropic-key",
+          "${local.ssm_param_arn}/runtime/backlog-manager-pat",
+          "${local.ssm_param_arn}/runtime/plan-reviewer-pat",
         ]
       },
       {
