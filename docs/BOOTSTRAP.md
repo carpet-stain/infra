@@ -595,19 +595,21 @@ either as live, same as §13. **Not tofu-adopted**, same reasoning as §13
 allow-list (`iam/main.tf`, #243) — a new `/runtime/*` param needs adding
 to that list first, an `iam/` break-glass apply.
 
-**Fetch path, CI (#217):** wired. dotfiles#596 (ADR-0048) firmed the hosted
-runtime and dotfiles#576's plan converged against it, so the role shaped
-like `pst_e2e_read` (`iam/main.tf`'s header comment) is built:
-`aws_iam_role.dotfiles_hosted_runtime_read`, OIDC-assumed, ID-pinned `sub`
-(`local.dotfiles_hosted_runtime_sub` — the default-branch ref form, since
-its `issue_comment`/`issues` triggers aren't PR-associated), granted
-`ssm:GetParameter` on the two key ARNs by name (not a `/runtime/*`
-wildcard) plus `kms:Decrypt` on `alias/runtime-secrets`. Remaining step is
-dotfiles#576's own: once its workflow lands, seed the role ARN there
-(`dotfiles_hosted_runtime_read_role_arn` output → `vars.AWS_HOSTED_RUNTIME_ROLE_ARN`,
-same `a gh variable set` shape as §16) — and per #227's lesson, assert a
-non-empty credential rather than letting a failed assume-role sail through
-silently.
+**Fetch path, CI (#217, extended #303):** wired. dotfiles#596 (ADR-0048)
+firmed the hosted runtime and dotfiles#576's plan converged against it, so
+the role shaped like `pst_e2e_read` (`iam/main.tf`'s header comment) is
+built: `aws_iam_role.dotfiles_hosted_runtime_read`, OIDC-assumed, ID-pinned
+`sub` (`local.dotfiles_hosted_runtime_sub` — the default-branch ref form,
+since its `issue_comment`/`issues` triggers aren't PR-associated), granted
+`ssm:GetParameter` on both Anthropic-key ARNs plus §13's two PAT ARNs
+(#303 — dotfiles#576 posts issue comments under each agent's own machine-user
+identity, the same attribution `agent-gh.sh` uses locally) by name (not a
+`/runtime/*` wildcard) plus `kms:Decrypt` on `alias/runtime-secrets`.
+Remaining step is dotfiles#576's own: once its workflow lands, seed the role
+ARN there (`dotfiles_hosted_runtime_read_role_arn` output →
+`vars.AWS_HOSTED_RUNTIME_ROLE_ARN`, same `a gh variable set` shape as §16)
+— and per #227's lesson, assert a non-empty credential rather than letting
+a failed assume-role sail through silently.
 
 ## 15. Neon Postgres account and management API key
 
