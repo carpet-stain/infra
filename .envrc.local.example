@@ -55,3 +55,9 @@ export TF_VAR_dispatch_image=
 # left blank until each exists.
 export TF_VAR_agent_memory_deploy_sub=
 export TF_VAR_gcp_agent_memory_service_account_unique_id=
+
+# agent-memory-server's CI-apply seam (docs/BOOTSTRAP.md §19, #272) — the
+# plan-read sub is agent-memory-server's pull_request twin of the
+# deploy sub above, a distinct WIF provider so a PR job can never present
+# the apply-only sub. Not secret, left blank until §19's bootstrap runs.
+export TF_VAR_agent_memory_plan_read_sub=
