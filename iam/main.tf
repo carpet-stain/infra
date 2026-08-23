@@ -707,6 +707,7 @@ resource "aws_iam_user_policy" "local_read" {
           "${local.ssm_param_arn}/runtime/plan-reviewer-anthropic-key",
           "${local.ssm_param_arn}/runtime/openrouter-api-key",
           "${local.ssm_param_arn}/runtime/agent-memory-backup-key",
+          "${local.ssm_param_arn}/runtime/agent-memory/backlog-manager/bearer-tokens",
         ]
       },
       {
