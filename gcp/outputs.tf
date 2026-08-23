@@ -41,3 +41,8 @@ output "agent_memory_plan_read_wif_provider" {
   value       = google_iam_workload_identity_pool_provider.github_agent_memory_plan_read.name
   description = "Full WIF provider resource name — agent-memory-server CI's plan-time workload_identity_provider input (#272)."
 }
+
+output "agent_memory_edge_invoker_service_account_email" {
+  value       = google_service_account.agent_memory_edge_invoker.email
+  description = "The Worker's impersonated identity — feed into the out-of-band SA-key creation step (docs/BOOTSTRAP.md §20, ADR-0031, #323)."
+}

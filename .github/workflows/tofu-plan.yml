@@ -46,6 +46,7 @@ jobs:
     # swap stores on a Dependabot-actored run.
     env:
       TF_VAR_cloudflare_account_id: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+      TF_VAR_agent_memory_edge_origin_url: ${{ vars.AGENT_MEMORY_EDGE_ORIGIN_URL }}
     steps:
       - uses: actions/checkout@v7
 

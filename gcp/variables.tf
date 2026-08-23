@@ -79,3 +79,20 @@ variable "agent_memory_plan_read_sub" {
     error_message = "Must be the ID-pinned pull_request sub repo:carpet-stain@5483606/agent-memory-server@<repo-id>:pull_request — a wrong or empty value refuses to plan rather than deploying nothing silently (#227)."
   }
 }
+
+variable "agent_memory_service_name" {
+  type        = string
+  nullable    = false
+  description = <<-EOT
+    The consumer's Cloud Run Service name (agent-memory-server's own
+    `agent-memory-<role>` shape, ADR-0031, #323) that
+    google_cloud_run_v2_service_iam_member.agent_memory_edge_invoker_can_run
+    binds against. Out-of-state target — this module doesn't create or
+    read the Service, so there's no resource reference to catch a typo.
+  EOT
+
+  validation {
+    condition     = can(regex("^agent-memory-[a-z0-9-]+$", var.agent_memory_service_name))
+    error_message = "Must match the consumer's agent-memory-<role> Service name shape — a wrong or empty value refuses to plan rather than 404ing at apply (#227)."
+  }
+}

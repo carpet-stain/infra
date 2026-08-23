@@ -6,6 +6,9 @@ Date: 2026-08-20
 
 Accepted
 
+Credential-class table's "GCP service accounts | keyless" row corrected by
+ADR-0031 (#323) — see the Amendment section at the end.
+
 Spike #245's answer (2 rounds of plan review). Two threads: whether the standing
 admin PAT can leave the local apply path, and how the long-lived-credential
 residual gets monitored.
@@ -160,3 +163,14 @@ spike #245's own framing.
 - Non-goals unchanged: the routine dev PAT keeps existing, #238/#244 stay
   their own issues, and the monitor implementation itself is still a
   follow-up, not delivered here.
+
+## Amendment — ADR-0031 (2026-08-23): GCP service accounts aren't all keyless
+
+The credential-class table's "GCP service accounts | keyless — WIF-federated"
+row held for every GCP SA in this repo until #323: the agent-memory edge
+invoker (ADR-0031) is the first keyed exception, its key created out-of-band
+and held in a Cloudflare Workers secret, never SSM or Tofu state. It has no
+expiry to pre-check (same `N/A` as the row it corrects) and no automated
+rotation — the trigger and owner are ADR-0031's own Consequences section,
+not restated here. Every other row is unaffected; WIF-federation stays the
+default for any new GCP SA, this is a named exception, not a reversal.

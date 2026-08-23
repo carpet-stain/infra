@@ -6,6 +6,9 @@ Date: 2026-08-17
 
 Accepted
 
+Reachability clause superseded by ADR-0031 (#323); every other section
+stands — see the Amendment section at the end.
+
 ## Context
 
 dotfiles' ADR-0046 moves per-role agent memory from a machine-local JSONL
@@ -202,3 +205,14 @@ surface, then dotfiles#636's cold-p95 go/no-go.
 
 Refs: #240, #227, #230, #204, ADR-0010, ADR-0014, ADR-0023, ADR-0024,
 ADR-0025, dotfiles ADR-0046, dotfiles#634, dotfiles#636, dotfiles#645.
+
+## Amendment — ADR-0031 (2026-08-23): Reachability clause superseded
+
+The `allUsers`-invocable design this section named was never built — the
+Service's IAM policy is empty, verified live (#323) — and ADR-0031 records
+the mechanism that replaces it (a Worker-minted ID token, IAM kept gated,
+ingress flipped to `all`). This Reachability clause stays below as the
+rejected-path record; the sequencing and infra/consumer boundary it
+described are superseded by ADR-0031's own boundary section, not restated
+here. Every other section of this ADR — scale-to-zero, the cold-path
+go/no-go, the checklist — is unaffected.

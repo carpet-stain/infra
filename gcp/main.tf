@@ -271,3 +271,21 @@ resource "google_project_iam_member" "agent_memory_plan_read_run" {
   role    = "roles/run.viewer"
   member  = "serviceAccount:${google_service_account.agent_memory_plan_read.email}"
 }
+
+# --- agent-memory edge invoker (ADR-0031, #323) -----------------------------
+# Mints the ID token Cloud Run's IAM check reads — replaces the never-built allUsers path (empty IAM policy, verified live).
+
+resource "google_service_account" "agent_memory_edge_invoker" {
+  account_id   = "agent-memory-edge-invoker"
+  display_name = "Cloudflare Worker edge invoker for agent-memory (ADR-0031, #323)"
+}
+
+# Targets a Service this module doesn't manage (ADR-0026's boundary) — a
+# wrong or empty agent_memory_service_name must refuse to plan, not 404 at apply (#227).
+resource "google_cloud_run_v2_service_iam_member" "agent_memory_edge_invoker_can_run" {
+  project  = var.google_project_id
+  location = var.google_region
+  name     = var.agent_memory_service_name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.agent_memory_edge_invoker.email}"
+}
