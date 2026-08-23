@@ -41,7 +41,7 @@ tofu *args:
 # read-only subcommands that reject the flag outright (verified against
 # `tofu -help <subcommand>`).
 tofu-iam *args:
-    case "{{ args }}" in (output*|show*|state*|validate*|fmt*|version*|providers*|graph*|force-unlock*|workspace*|console*) input_flag="" ;; (*) input_flag="-input=false" ;; esac; scripts/with-infra-secrets.sh --bootstrap tofu -chdir=iam $input_flag {{ args }}
+    case "{{ args }}" in (output*|show*|state*|validate*|fmt*|version*|providers*|graph*|force-unlock*|workspace*|console*) input_flag="" ;; (*) input_flag="-input=false" ;; esac; scripts/with-infra-secrets.sh --bootstrap tofu -chdir=iam {{ args }} $input_flag
 
 # Apply under the admin token fetched from gated SSM (ADR-0013) —
 # mutations need Administration, which the routine GH_TOKEN deliberately
