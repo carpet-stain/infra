@@ -56,24 +56,29 @@ resource "github_repository" "this" {
   }
 }
 
-# The canonical label set on every managed repo, keyed "repo:label".
-resource "github_issue_label" "this" {
-  for_each = {
-    for pair in setproduct(keys(local.repos), keys(local.labels)) :
-    "${pair[0]}:${pair[1]}" => { repo = pair[0], label = pair[1] }
-  }
+# Authoritative per-repo label set — syncs against live labels on first
+# apply, no temporary import block for GitHub's seeded defaults (#254).
+resource "github_issue_labels" "this" {
+  for_each = local.repos
 
-  repository  = github_repository.this[each.value.repo].name
-  name        = each.value.label
-  color       = local.labels[each.value.label].color
-  description = local.labels[each.value.label].description
+  repository = github_repository.this[each.key].name
+
+  dynamic "label" {
+    for_each = local.repo_label_sets[each.key]
+    content {
+      name = label.key
+      # local.labels mixes case; lower() keeps the comparison against
+      # GitHub's lowercased hex from perpetually diffing.
+      color       = lower(label.value.color)
+      description = label.value.description
+    }
+  }
 
   lifecycle {
     precondition {
-      # No lint catches this — the API 422s at apply time otherwise, one
-      # label at a time, across every managed repo.
-      condition     = length(local.labels[each.value.label].description) <= 100
-      error_message = "GitHub caps label descriptions at 100 characters: \"${each.value.label}\" is ${length(local.labels[each.value.label].description)}."
+      # No lint catches this — the API 422s at apply time otherwise.
+      condition     = length([for name, attrs in local.repo_label_sets[each.key] : name if length(attrs.description) > 100]) == 0
+      error_message = "GitHub caps label descriptions at 100 characters: ${join(", ", [for name, attrs in local.repo_label_sets[each.key] : name if length(attrs.description) > 100])}."
     }
   }
 }
@@ -91,60 +96,22 @@ resource "github_repository_collaborator" "this" {
   permission = local.collaborators[each.value.username].permission
 }
 
-# Repo-specific labels (#13, #106, repos.tf's repo_labels) — outside the
-# canonical for_each above so they don't land on every managed repo.
-resource "github_issue_label" "repo_only" {
-  for_each = {
-    for pair in flatten([
-      for repo, labels in local.repo_labels : [
-        for name, attrs in labels : merge(attrs, { key = "${repo}:${name}", repo = repo, name = name })
-      ]
-    ]) : pair.key => pair
-  }
-
-  repository  = github_repository.this[each.value.repo].name
-  name        = each.value.name
-  color       = each.value.color
-  description = each.value.description
+# Detach state without deleting live labels — github_issue_labels.this
+# adopts them via its authoritative first-apply read (#254).
+removed {
+  from = github_issue_label.this
 
   lifecycle {
-    precondition {
-      condition     = length(each.value.description) <= 100
-      error_message = "GitHub caps label descriptions at 100 characters: \"${each.value.name}\" is ${length(each.value.description)}."
-    }
+    destroy = false
   }
 }
 
-# Reattach state to the renamed/generalized resource (#106) — a plain rename
-# would delete each label from its repo for one apply cycle before recreating it.
-moved {
-  from = github_issue_label.infra_only["theme: cloudflare"]
-  to   = github_issue_label.repo_only["infra:theme: cloudflare"]
-}
+removed {
+  from = github_issue_label.repo_only
 
-moved {
-  from = github_issue_label.this["infra:tofu-drift"]
-  to   = github_issue_label.repo_only["infra:tofu-drift"]
-}
-
-moved {
-  from = github_issue_label.this["dotfiles:release-watch"]
-  to   = github_issue_label.repo_only["dotfiles:release-watch"]
-}
-
-moved {
-  from = github_issue_label.this["dotfiles:theme: tool-review"]
-  to   = github_issue_label.repo_only["dotfiles:theme: tool-review"]
-}
-
-moved {
-  from = github_issue_label.this["dotfiles:theme: xdg-hygiene"]
-  to   = github_issue_label.repo_only["dotfiles:theme: xdg-hygiene"]
-}
-
-moved {
-  from = github_issue_label.this["dotfiles:upstream-review"]
-  to   = github_issue_label.repo_only["dotfiles:upstream-review"]
+  lifecycle {
+    destroy = false
+  }
 }
 
 # The `protect main` ruleset on every managed repo: rebase-merge only, required

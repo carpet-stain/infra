@@ -199,4 +199,8 @@ locals {
       "upstream-review"    = { color = "5319E7", description = "Ideas from the z0rc/dotfiles fork worth considering" }
     }
   }
+
+  # Per-repo label set fed to github_issue_labels (main.tf): canonical plus
+  # whatever repo_labels scopes to that repo (#254).
+  repo_label_sets = { for r in keys(local.repos) : r => merge(local.labels, lookup(local.repo_labels, r, {})) }
 }

@@ -41,13 +41,13 @@ Adding a repo: an entry in `repos.tf`'s map — the next apply creates it
 with labels and its ruleset. Install the App on the new repo first
 (manual, ADR-0004) — the entry must not merge before it, or every tofu
 workflow 422s at token mint (see AGENTS.md's Credentials section).
-Gotcha: GitHub seeds a fresh repo with its
-default labels, and the ones colliding with the canonical set (bug,
-documentation, duplicate, enhancement, good first issue, wontfix) need
-temporary `import` blocks; delete the four strays (help wanted, invalid,
-question, accessibility) by hand. Adopting an existing repo: the map entry plus a
-temporary `import` block (`id` = repo name; labels `repo:label`, rulesets
-`repo:ruleset_id`), deleted once applied.
+`github_issue_labels` (#254) syncs authoritatively against the repo's
+actual labels on first apply, so GitHub's seeded defaults (bug,
+documentation, duplicate, enhancement, good first issue, wontfix, help
+wanted, invalid, question) are reconciled with no `import` block and no
+follow-up delete PR. Adopting an existing repo still needs a temporary
+`import` block for the repository and ruleset (`id` = repo name; rulesets
+`repo:ruleset_id`), deleted once applied — labels adopt automatically.
 
 ## Contributing
 
