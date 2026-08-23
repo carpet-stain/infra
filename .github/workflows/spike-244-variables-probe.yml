@@ -1,0 +1,84 @@
+name: Spike 244 — App Variables probe
+
+# One-shot diagnostic for #244: mints a non-narrowed App token (no
+# permission-* overrides, same omission vend-token.yml relies on — the
+# token inherits the App's full installation grant) and round-trips a
+# scratch Actions variable through the REST API, to confirm an
+# installation access token actually authorizes the Variables endpoints
+# now that the App has Variables: write. Remove once #244 records a result.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+
+jobs:
+  probe:
+    name: mint + round-trip a scratch variable
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Assume infra-vend-write via OIDC
+        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
+        with:
+          role-to-assume: ${{ vars.AWS_VEND_ROLE_ARN }}
+          aws-region: us-east-1
+
+      # Same shape as vend-token.yml's own inline read — that role's grant
+      # is GetParameter on the App-key ARN alone, not read-ssm-params' GetParameters.
+      - name: Read App private key from SSM
+        id: ssm-key
+        run: |
+          value="$(aws ssm get-parameter --name /infra/gh-app-private-key \
+            --with-decryption --query Parameter.Value --output text)"
+          while IFS= read -r line; do
+            [[ -n "$line" ]] && echo "::add-mask::$line"
+          done <<<"$value"
+          delim="EOF_$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"
+          { echo "GH_APP_PRIVATE_KEY<<${delim}"; printf '%s\n' "$value"; echo "$delim"; } >>"$GITHUB_OUTPUT"
+
+      - name: Mint non-narrowed token
+        id: app-token
+        uses: ./.github/actions/mint-app-token
+        with:
+          client-id: ${{ vars.GH_APP_CLIENT_ID }}
+          private-key: ${{ steps.ssm-key.outputs.GH_APP_PRIVATE_KEY }}
+          repositories: infra
+
+      - name: Round-trip a scratch variable
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          set -euo pipefail
+          repo=carpet-stain/infra
+          name=SPIKE_244_PROBE
+
+          create_code="$(curl -s -o /tmp/create.json -w '%{http_code}' \
+            -X POST "https://api.github.com/repos/$repo/actions/variables" \
+            -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json' \
+            -d "{\"name\":\"$name\",\"value\":\"ok\"}")"
+          echo "create: $create_code"
+          cat /tmp/create.json
+
+          get_code="$(curl -s -o /tmp/get.json -w '%{http_code}' \
+            "https://api.github.com/repos/$repo/actions/variables/$name" \
+            -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json')"
+          echo "get: $get_code"
+          cat /tmp/get.json
+
+          if [[ "$create_code" != "201" || "$get_code" != "200" ]]; then
+            echo "::error::probe failed — create=$create_code get=$get_code"
+            exit 1
+          fi
+          echo "probe succeeded — the App installation token authorized the Variables API"
+
+      - name: Clean up scratch variable
+        if: always()
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          curl -s -o /dev/null -w 'delete: %{http_code}\n' \
+            -X DELETE "https://api.github.com/repos/carpet-stain/infra/actions/variables/SPIKE_244_PROBE" \
+            -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json'
