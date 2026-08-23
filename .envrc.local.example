@@ -40,7 +40,11 @@ export TF_VAR_google_region=
 # Resolved only after gcp/'s and iam/'s first bootstrap applies
 # (docs/BOOTSTRAP.md §17's chicken-and-egg ordering) — not secret (a
 # numeric SA id, a role ARN, and an image tag grant nothing by
-# themselves), left blank until then.
+# themselves), left blank until then. Adding a new GCP→AWS federation
+# consumer's own *_service_account_unique_id var? Add its export here in
+# the same change (docs/BOOTSTRAP.md §17's add-a-consumer note, #257) —
+# `just tofu-iam apply` now fails loud on one that's missing, but only
+# once the export exists to fill in.
 export TF_VAR_gcp_dispatch_service_account_unique_id=
 export TF_VAR_aws_dispatch_role_arn=
 export TF_VAR_dispatch_image=

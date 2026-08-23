@@ -11,6 +11,11 @@ variable "google_project_id" {
     and Artifact Registry repo (ADR-0024, #191). Created by hand with
     billing enabled before this module's first apply (docs/BOOTSTRAP.md §17).
   EOT
+
+  validation {
+    condition     = length(var.google_project_id) > 0
+    error_message = "Must be set — every SA email in this module and the ones read by hand for iam/'s unique_id vars (BOOTSTRAP.md §17/§18) is built from it, so an empty value would resolve against the wrong project instead of refusing to plan (#257)."
+  }
 }
 
 variable "google_region" {

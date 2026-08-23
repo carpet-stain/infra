@@ -36,8 +36,12 @@ tofu *args:
 # Same wrapper in --bootstrap mode (Keychain prompt: infra-aws-bootstrap);
 # reactivate the break-glass key in the console first, deactivate after
 # (docs/BOOTSTRAP.md). No GitHub token needed (no github provider in iam/).
+# -input=false by default so an unset required var (#257) fails loud by
+# name instead of hanging on a silent stdin prompt; exempted for the
+# read-only subcommands that reject the flag outright (verified against
+# `tofu -help <subcommand>`).
 tofu-iam *args:
-    scripts/with-infra-secrets.sh --bootstrap tofu -chdir=iam {{ args }}
+    case "{{ args }}" in (output*|show*|state*|validate*|fmt*|version*|providers*|graph*|force-unlock*|workspace*|console*) input_flag="" ;; (*) input_flag="-input=false" ;; esac; scripts/with-infra-secrets.sh --bootstrap tofu -chdir=iam $input_flag {{ args }}
 
 # Apply under the admin token fetched from gated SSM (ADR-0013) —
 # mutations need Administration, which the routine GH_TOKEN deliberately
