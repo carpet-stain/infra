@@ -881,8 +881,9 @@ ADC, `gcp/` + `iam/` initialized). In order:
 
 ## 19. agent-memory-server's CI-apply seam — R2 state, `/cicd`, and its CI roles
 
-**Additive** (ADR-0010/ADR-0016's #272 amendments): agent-memory-server
-moves to full CI apply for its own `terraform/`. Unlike §18, this is
+**Additive** (ADR-0010/ADR-0016's #272 amendments, hardened by the first-apply
+shakeout in #292–#294): agent-memory-server moves to full CI apply for its
+own `terraform/`. Unlike §18, this is
 credential/state plumbing, not identities-only — infra provisions a
 dedicated R2 state bucket, a bootstrap secret tier, and two OIDC roles;
 the consumer's tofu manages its own resources against them. Assumes §18
@@ -929,8 +930,13 @@ is done. No cycle in this order, followed exactly:
 - **Apply `iam/`** (Keychain prompt: `infra-aws-bootstrap`, reactivate per
   §3): `just tofu-iam apply`. Creates `alias/cicd-secrets`, adopts and
   re-keys the seven `/cicd/agent-memory/*` parameters, and creates
-  `agent-memory-plan-read`/`agent-memory-apply`. Delete the spent `import`
-  blocks, then verify one decrypting read of each parameter.
+  `agent-memory-plan-read`/`agent-memory-apply` — both carrying the same
+  `ssm:DescribeParameters` (unscoped, metadata-only) and
+  `ssm:ListTagsForResource` (scoped to `/runtime/agent-memory/*`) grants
+  infra's own roles carry, for provider parity (#292: the AWS provider
+  calls both on every `aws_ssm_parameter` refresh, and plan/apply failed
+  `AccessDenied` without them). Delete the spent `import` blocks, then
+  verify one decrypting read of each parameter.
 
 - **Seed the GCP plan-read subject** — same shape as §18's deploy
   subject, a distinct value (`:pull_request`, not `:ref:refs/heads/main`):
@@ -947,15 +953,27 @@ is done. No cycle in this order, followed exactly:
   SA, and its project-scoped `run.viewer` grant — `agent-memory-deploy`
   (§18) is untouched, still `run.developer`.
 
+- **The `tofu-apply-dispatch` escape hatch is wired in, not a separate
+  step** — `main.tf`'s `github_repository_environment.amem_tofu_apply_dispatch`
+  (agent-memory-server's twin of infra's own, same required-reviewer +
+  `protected_branches` shape) lands with the routine root apply, and
+  `agent-memory-apply`'s AWS trust policy plus the GCP WIF provider's
+  `attribute_condition` (both applied above) already trust the resulting
+  `:environment:tofu-apply-dispatch` sub alongside the main-branch/deploy
+  sub. Same ADR-0010 pattern as infra's own dispatch gate, not re-derived
+  here (#293 AWS, #294 the GCP twin).
+
 - **Publish the seam to agent-memory-server** — repo variables, same
   not-secret reasoning as §18 (role ARNs and WIF provider names grant
   nothing without the pinned trust): `just tofu-iam output
 agent_memory_plan_read_role_arn` / `agent_memory_apply_role_arn` (→ its
   `AWS_PLAN_ROLE_ARN` / `AWS_APPLY_ROLE_ARN`), and `just tofu-gcp output
 agent_memory_plan_read_service_account_email` /
-  `agent_memory_plan_read_wif_provider` (→ its plan job's
-  `google-github-actions/auth` inputs; the apply job keeps using §18's
-  `agent_memory_deploy_service_account_email` / `agent_memory_wif_provider`).
+  `agent_memory_plan_read_wif_provider` (→ its `GCP_PLAN_SA_EMAIL` /
+  `GCP_PLAN_WIF_PROVIDER`); the apply job reuses §18's
+  `agent_memory_deploy_service_account_email` / `agent_memory_wif_provider`
+  outputs as `GCP_DEPLOY_SA_EMAIL` / `GCP_DEPLOY_WIF_PROVIDER` — no new
+  GCP output exists for §19's apply side.
 
 - **The `allUsers` invoker binding stays out-of-band** — applied from
   infra's own break-glass `gcp/` riding #250's post-deploy reachability
