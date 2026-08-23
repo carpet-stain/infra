@@ -36,6 +36,11 @@ variable "gcp_dispatch_service_account_unique_id" {
     (docs/BOOTSTRAP.md §17) — a real chicken-and-egg step, same shape as
     ADR-0010's own bootstrap sequence.
   EOT
+
+  validation {
+    condition     = can(regex("^[0-9]+$", var.gcp_dispatch_service_account_unique_id))
+    error_message = "Must be the SA's numeric uniqueId, never its email — a wrong or empty value refuses to plan rather than failing closed at runtime (#227, ADR-0010's #163 ID-pinning)."
+  }
 }
 
 variable "gcp_agent_memory_service_account_unique_id" {
@@ -53,3 +58,6 @@ variable "gcp_agent_memory_service_account_unique_id" {
     error_message = "Must be the SA's numeric uniqueId, never its email — a wrong or empty value refuses to plan rather than failing closed at runtime (#227, ADR-0010's #163 ID-pinning)."
   }
 }
+
+# Revisit trigger: a 3rd federation consumer is where #257's declined
+# resolver script gets reconsidered — see #257 for the hand-paste rationale.

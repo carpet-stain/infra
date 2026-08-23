@@ -805,6 +805,14 @@ projects create`), then authenticate locally:
 --location="$TF_VAR_google_region"` (or wait for the next natural tick),
   then confirm a fresh `vend-token.yml` run appears in the Actions tab.
 
+**Adding a federation consumer (#257):** phase 3's
+`TF_VAR_gcp_*_service_account_unique_id` export must land in `.envrc.local`
+(and its blank-value line in `.envrc.local.example` —
+`scripts/check-envrc-local-example.sh` enforces the two stay structurally in
+sync) in the same change that adds the var to `iam/variables.tf`. Miss it and
+`just tofu-iam apply` now fails loud (`-input=false`) by variable name instead
+of hanging on a silent prompt — but only once the export exists to catch.
+
 ## 18. The agent-memory endpoint's bootstrap identities
 
 **Additive** (ADR-0026, #240): the hosted agent-memory MCP endpoint
