@@ -870,14 +870,13 @@ ADC, `gcp/` + `iam/` initialized). In order:
   `agent_memory_repository_url`, and `iam/`'s
   `agent_memory_ssm_read_role_arn` (→ the Service's `AWS_ROLE_ARN` env).
 
-- **After the consumer's first deploy** (dotfiles#634): front the Service
-  with the Cloudflare edge — add its custom-domain record to `dns.tf`
-  (the Service hostname doesn't exist before that deploy, which is why
-  the record isn't pre-created here) plus an edge rate-limit, and verify
-  the consumer locked the Service's ingress so the raw `*.run.app` URL
-  isn't directly invocable — the cost-DoS fence ADR-0026 requires, since
-  the app bearer gates data, not invocation. Then a reachability check
-  from a cloud surface, and dotfiles#636's cold-p95 go/no-go.
+- **After the consumer's first deploy** (dotfiles#634): §20 fronts the
+  Service with a Cloudflare Worker (ADR-0031, #323) — not the `allUsers` +
+  ingress-lock shape this bullet originally named, which was never built
+  (the Service's IAM policy is empty, verified live #323). Once §20's
+  Worker is live and its gate checkpoints pass, `dns.tf` gets its
+  custom-domain record and edge rate-limit (#250), then a reachability
+  check from a cloud surface and dotfiles#636's cold-p95 go/no-go.
 
 ## 19. agent-memory-server's CI-apply seam — R2 state, `/cicd`, and its CI roles
 
@@ -975,9 +974,93 @@ agent_memory_plan_read_service_account_email` /
   outputs as `GCP_DEPLOY_SA_EMAIL` / `GCP_DEPLOY_WIF_PROVIDER` — no new
   GCP output exists for §19's apply side.
 
-- **The `allUsers` invoker binding stays out-of-band** — applied from
-  infra's own break-glass `gcp/` riding #250's post-deploy reachability
-  seam, not from anything in this section (ADR-0010's #272 amendment).
+- **No `allUsers` invoker binding** — ADR-0010's #272 amendment named this
+  step, but ADR-0031 (#323) replaced the design it belonged to before it
+  was ever applied. §20 is what actually opens the Service up.
+
+## 20. The agent-memory edge — Worker-minted ID token, ingress opened (ADR-0031, #323)
+
+**Additive**, superseding §18's original ingress-lock plan (ADR-0031
+amends ADR-0026's Reachability clause — see that ADR's Amendment section).
+Assumes §18 is done (the runtime/deploy SAs, the Artifact Registry repo)
+and the consumer has deployed at least once, so its Service name and URL
+exist. Code for the Terraform in this section shipped in #323; the phases
+below are the manual bootstrap run, same split as every other section here.
+
+- **Set the CI variable immediately, even before the rest of this section
+  runs** — `workers.tf`'s `agent_memory_edge_origin_url` is a root-module
+  var, so `tofu-plan.yml`/`tofu-drift.yml`/`tofu-apply.yml` need it wired
+  the moment #323's code lands, or every PR's `tofu plan` fails "No value
+  for required variable" (#227's fail-loud, same discipline, unfamiliar
+  surface — every other such var lives in `gcp/`, never CI-planned):
+
+  ```sh
+  gh variable set AGENT_MEMORY_EDGE_ORIGIN_URL \
+    --body https://agent-memory-placeholder-not-yet-deployed.a.run.app
+  ```
+
+  Real value once the consumer's first deploy publishes its actual URL —
+  same `gh variable set` shape as `CLOUDFLARE_ACCOUNT_ID` (§9).
+
+- **Apply `gcp/`'s edge invoker** — `google_service_account.agent_memory_edge_invoker`
+  and its `run.invoker` binding on the consumer's Service need that
+  Service's exact name and region as `TF_VAR`s first:
+
+  ```sh
+  export TF_VAR_agent_memory_service_name=agent-memory-<role>   # the consumer's Service name
+  just tofu-gcp apply
+  just tofu-gcp output agent_memory_edge_invoker_service_account_email
+  ```
+
+- **Create the SA key out-of-band** — console or `gcloud iam
+service-accounts keys create`, against the email from the output above.
+  Never `google_service_account_key` in Tofu (ADR-0031's Decision):
+  infra's root module is CI-applied via saved plan artifacts in a public
+  repo, and in-state custody would route the resulting private key
+  through that pipeline.
+
+- **Hand-populate the Worker secret** — the downloaded JSON key file's
+  full contents become `workers.tf`'s `GCP_SA_KEY_JSON` binding. Set
+  `TF_VAR_agent_memory_edge_origin_url` to the consumer's Cloud Run URL,
+  then:
+
+  ```sh
+  just tofu-apply -target=cloudflare_workers_script.agent_memory_edge
+  ```
+
+  applies with the code's `PLACEHOLDER` secret text, then hand-set the
+  real key value via the Cloudflare dashboard or `wrangler secret put
+GCP_SA_KEY_JSON --name agent-memory-edge < key.json` — `ignore_changes`
+  on the resource's `bindings` list means Tofu won't fight this. Delete
+  the local key file after.
+
+- **Precondition, verify before the apply above**: `/infra/cloudflare-api-token`
+  must carry Workers Scripts Edit — if it doesn't, that's a credential
+  scope change (§9) sequenced first.
+
+- **Run #323's three gate checkpoints, in order**, before anything below
+  opens the door — full text in the issue:
+  1. Confirm live that Cloud Run consumes `X-Serverless-Authorization` for
+     its IAM check and passes `Authorization` through untouched.
+  2. One real Worker `fetch()` carrying both headers against a real MCP
+     call — Cloudflare must not strip the custom header, and MCP-over-HTTP
+     streaming must survive the hop.
+  3. Flood the raw `run.app` URL with no `Authorization`, then with a
+     valid bearer but no ID token — both must 403 with instance-count and
+     billable-request metrics flat.
+
+  Any checkpoint failing means re-planning, not patching — ADR-0031's own
+  revisit trigger.
+
+- **Flip the consumer's ingress** — only once all three checkpoints pass:
+  `agent-memory-server`'s `cloud_run.tf` `ingress` → `INGRESS_TRAFFIC_ALL`,
+  fixing the two comments asserting the LB lock (`cloud_run.tf:20-21`,
+  `outputs.tf:2`) — that repo's own change, not infra's.
+
+- **Then, and only then**: `dns.tf`'s custom hostname and the edge
+  rate-limit (#250), a reachability check from a cloud surface, and
+  dotfiles#636's cold-p95 go/no-go — same closing sequence §18 originally
+  named.
 
 ## What's still manual, permanently
 

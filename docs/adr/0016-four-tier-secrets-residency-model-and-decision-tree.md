@@ -204,3 +204,22 @@ CI reads.
 Full role×path spec (which SSM paths, which OIDC roles, which KMS key)
 is ADR-0010's own #272 amendment; this ADR only records the tier's place
 in the residency tree. Nothing else in the tree changes.
+
+## Amendment — ADR-0031 (2026-08-23): a fourth machine sub-tier, Worker-scoped secrets
+
+The machine tier assumed every automation-fetched secret lands in AWS SSM.
+The agent-memory edge invoker's SA key (ADR-0031, #323) can't: it must
+never enter this repo's Tofu state, since infra's root module is
+CI-applied via saved plan artifacts in a **public** repo, and in-state
+custody would route a live GCP private key through that pipeline — the
+same reasoning `/cicd`'s #272 amendment already applies to a different
+seam. The tree's "fetched by automation, infra's own?" branch gains a
+second answer for the one case where the fetching automation isn't infra's
+own CI or a covered repo's, but a Cloudflare Worker infra deploys: created
+out-of-band, hand-populated into a **Cloudflare Workers secret binding**,
+`ignore_changes`-fenced in `workers.tf` — the `/cicd` PLACEHOLDER shape,
+landing in a different store because the constraint (never in Tofu state)
+is the same but the consumer (a Worker, not a repo's CI) isn't.
+
+Nothing else in the tree changes; this is one named exception, not a fifth
+tier — SSM remains the default for every other automation-fetched secret.

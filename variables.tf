@@ -36,3 +36,23 @@ variable "cloudflare_account_id" {
     vars.CLOUDFLARE_ACCOUNT_ID (CI).
   EOT
 }
+
+variable "agent_memory_edge_origin_url" {
+  type        = string
+  nullable    = false
+  description = <<-EOT
+    The consumer's Cloud Run Service URL (ADR-0031, #323) — both
+    workers/agent-memory-edge's forward target and the Google ID token's
+    `target_audience` claim. Out-of-state, published by
+    agent-memory-server's first deploy (docs/BOOTSTRAP.md §18); a wrong or
+    empty value would forward to nowhere or mint a token for the wrong
+    audience instead of refusing to plan (#227).
+  EOT
+
+  validation {
+    # Cloud Run's default hostname is multi-label (<service>-<hash>-<region>.a.run.app),
+    # not a single label before .run.app — this must accept that shape.
+    condition     = can(regex("^https://[a-z0-9.-]+\\.run\\.app$", var.agent_memory_edge_origin_url))
+    error_message = "Must be the bare Cloud Run https://<service>-<hash>-<region>.a.run.app origin — a wrong or empty value refuses to plan rather than forwarding to nowhere at apply (#227)."
+  }
+}

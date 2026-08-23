@@ -61,3 +61,11 @@ export TF_VAR_gcp_agent_memory_service_account_unique_id=
 # deploy sub above, a distinct WIF provider so a PR job can never present
 # the apply-only sub. Not secret, left blank until §19's bootstrap runs.
 export TF_VAR_agent_memory_plan_read_sub=
+
+# The agent-memory edge invoker (ADR-0031, #323) — the Worker-minted-ID-
+# token fence replacing ADR-0026's never-built allUsers path. Not secret
+# (a Service name and a Cloud Run URL grant nothing without the SA key
+# gcp/'s IAM binding pins), left blank until the consumer's first deploy
+# names both (docs/BOOTSTRAP.md §20).
+export TF_VAR_agent_memory_service_name=
+export TF_VAR_agent_memory_edge_origin_url=
