@@ -416,17 +416,23 @@ resource "aws_iam_role_policy" "dotfiles_hosted_runtime_read" {
     Version = "2012-10-17"
     Statement = [
       {
-        # Named allow-list, never /runtime/* (#303: added the two PATs
-        # alongside #217's Anthropic keys, same narrow-by-name shape).
+        # Named allow-list, never /runtime/* (#303). The two Anthropic keys
+        # dropped from here, superseded by the OpenRouter grant below.
         Sid    = "ReadAgentCredentialsOnly"
         Effect = "Allow"
         Action = "ssm:GetParameter"
         Resource = [
-          "${local.ssm_param_arn}/runtime/backlog-manager-anthropic-key",
-          "${local.ssm_param_arn}/runtime/plan-reviewer-anthropic-key",
           "${local.ssm_param_arn}/runtime/backlog-manager-pat",
           "${local.ssm_param_arn}/runtime/plan-reviewer-pat",
         ]
+      },
+      {
+        # Shared model-inference credential replacing the two per-role
+        # Anthropic keys above (dotfiles#576) — see BOOTSTRAP.md §16.
+        Sid      = "ReadOpenRouterKeyOnly"
+        Effect   = "Allow"
+        Action   = "ssm:GetParameter"
+        Resource = "${local.ssm_param_arn}/runtime/openrouter-api-key"
       },
       {
         # The runner's own write identity, not an agent's — #305, same
