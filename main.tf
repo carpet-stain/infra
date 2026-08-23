@@ -34,9 +34,6 @@ resource "github_repository" "this" {
 
   web_commit_signoff_required = false
 
-  # Security by default for every managed repo.
-  vulnerability_alerts = true
-
   # Destroying a managed repo archives it instead of deleting it — removal
   # from the map must never be able to destroy history.
   archive_on_destroy = true
@@ -54,6 +51,14 @@ resource "github_repository" "this" {
       merge_commit_message,
     ]
   }
+}
+
+# Security by default for every managed repo — split out because the
+# provider deprecated the inline vulnerability_alerts argument (#253).
+resource "github_repository_vulnerability_alerts" "this" {
+  for_each = local.repos
+
+  repository = github_repository.this[each.key].name
 }
 
 # Authoritative per-repo label set — syncs against live labels on first
