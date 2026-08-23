@@ -18,11 +18,12 @@ locals {
   pst_sub_prefix = "repo:carpet-stain@5483606/project-starter-template@1305207591"
   pst_sub_main   = "${local.pst_sub_prefix}:ref:refs/heads/main"
 
-  # agents' and dotfiles' pr-code-review.yml (#220): both ID-pinned,
-  # :pull_request (no :ref) since the trigger is pull_request, not a branch.
+  # agents', dotfiles', and agent-memory-server's pr-code-review.yml (#220,
+  # #307): all ID-pinned, :pull_request since the trigger is pull_request.
   pr_review_openrouter_subs = [
     "repo:carpet-stain@5483606/agents@1333182579:pull_request",
     "repo:carpet-stain@5483606/dotfiles@247179961:pull_request",
+    local.amem_sub_pr,
   ]
 
   # dotfiles' hosted runtime (#217, dotfiles#596/#576): issue_comment/issues
