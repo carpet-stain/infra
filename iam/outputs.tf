@@ -24,7 +24,7 @@ output "pst_e2e_read_role_arn" {
 
 output "pr_review_openrouter_read_role_arn" {
   value       = aws_iam_role.pr_review_openrouter_read.arn
-  description = "Seed as vars.AWS_OPENROUTER_ROLE_ARN on agents and dotfiles — their pr-code-review.yml workflows (#220)."
+  description = "Seed as vars.AWS_OPENROUTER_ROLE_ARN on agents, dotfiles, and agent-memory-server — their pr-code-review.yml workflows (#220, #307)."
 }
 
 output "dotfiles_hosted_runtime_read_role_arn" {
