@@ -96,6 +96,7 @@ jobs:
         id: plan
         env:
           TENV_AUTO_INSTALL: "true"
+          TENV_GITHUB_TOKEN: ${{ github.token }}
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
           TF_STATE_PASSPHRASE: ${{ steps.ssm.outputs.TF_STATE_PASSPHRASE }}
           R2_PLAN_ACCESS_KEY_ID: ${{ steps.ssm.outputs.R2_PLAN_ACCESS_KEY_ID }}

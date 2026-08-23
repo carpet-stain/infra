@@ -55,3 +55,4 @@ jobs:
         run: just lint --tag lang --no-tty
         env:
           TENV_AUTO_INSTALL: "true"
+          TENV_GITHUB_TOKEN: ${{ github.token }}

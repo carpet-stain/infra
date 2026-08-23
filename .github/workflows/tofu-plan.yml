@@ -115,6 +115,10 @@ jobs:
         id: plan
         env:
           TENV_AUTO_INSTALL: "true"
+          # Raises tenv's GitHub API resolution off the unauthenticated
+          # 60 req/hr ceiling (#297) — the default Actions token, not the
+          # App-minted one below, which is scoped to the github provider.
+          TENV_GITHUB_TOKEN: ${{ github.token }}
           # The github provider's credential — the App-minted read token, not
           # a standing PAT (#59). Confined to this step, not job-wide.
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
