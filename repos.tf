@@ -165,7 +165,7 @@ locals {
   labels = {
     "agent-ready"         = { color = "2EA043", description = "Mechanical + verifiable; an autonomous agent can implement it without human judgment" }
     "architecture"        = { color = "1D76DB", description = "Architecturally significant — requires an ADR" }
-    "blocked"             = { color = "000000", description = "Not actionable until a dependency clears (reason in a comment / native blocked-by)" }
+    "blocked"             = { color = "000000", description = "Blocked, but not by a native dependency (reason in a comment). Issue-to-issue: use blocked-by" }
     "bug"                 = { color = "d73a4a", description = "Something isn't working" }
     "documentation"       = { color = "0075ca", description = "Improvements or additions to documentation" }
     "duplicate"           = { color = "cfd3d7", description = "This issue or pull request already exists" }
