@@ -1137,6 +1137,31 @@ credential's blast radius stays legible under its own name. Grants
 (dotfiles#669 Phase 3, not yet built) assumes this role the same way
 `pr-code-review.yml` assumes `pr-review-openrouter-read`.
 
+## 22. Security Command Center Standard — project-level activation (#277)
+
+**Additive, manual — no Tofu resource, verified rather than assumed.**
+Epic #230's GCP track wants Security Command Center Standard (Security
+Health Analytics) active at project scope, the GCP analog of #235's IAM Access
+Analyzer. Unlike every other guardrail in #230, activating SCC itself
+isn't Terraform-manageable today: it's a console/gcloud-driven flow, not
+a declarative resource — confirmed against `hashicorp/terraform-provider-google`
+issue #14067, an open feature request for exactly this gap ("Resource to
+enable built-in services of Security Command Center… on project level").
+`google_scc_management_*_security_health_analytics_custom_module`
+manages **custom** detectors on top of an active SCC instance; it doesn't
+turn SCC on.
+
+**Activate by hand**, no Organization required (project-level
+activation): Security Command Center → Get Started, select **Standard**
+tier, scope to this project. Security Health Analytics is included in
+Standard, no extra step. Verify no recurring cost — Standard tier only,
+never Premium (same free-vs-paid line as skipping GuardDuty/Config on
+the AWS side).
+
+Once active, custom modules (if any get added later) would be genuinely
+Tofu-manageable via `google_scc_management_project_security_health_analytics_custom_module`
+— out of #277's scope, since it asks for the built-in analyzers only.
+
 ## What's still manual, permanently
 
 Not a bootstrap-only list — these stay manual forever, for reasons
@@ -1186,6 +1211,10 @@ tooling gaps:
 - The board-sync PAT (§21, #301) — a classic `project`-scoped token minted
   under the board owner's own account, no expiry-refresh path; joins the
   periodic audit alongside the deliberation-agent PATs.
+- Security Command Center Standard activation (§22, #277) — no Terraform
+  resource exists for project-level activation (verified against an open
+  provider feature request); "still active, Standard tier only" joins
+  the periodic audit alongside the four AWS guardrails.
 - The elevated Keychain items' read prompt — the fence the containment
   invariant rests on, and one "Always Allow" click (or a confirm setting
   that skips the keychain password) disables it silently: found live in
