@@ -1012,50 +1012,71 @@ below are the manual bootstrap run, same split as every other section here.
   just tofu-gcp output agent_memory_edge_invoker_service_account_email
   ```
 
-- **Create the SA key out-of-band** — console or `gcloud iam
-service-accounts keys create`, against the email from the output above.
-  Never `google_service_account_key` in Tofu (ADR-0031's Decision):
-  infra's root module is CI-applied via saved plan artifacts in a public
-  repo, and in-state custody would route the resulting private key
-  through that pipeline.
+- **Precondition, verify before the apply below**: `/infra/cloudflare-api-token`
+  must carry Workers Scripts Edit (for the apply), and
+  `/infra/cloudflare-api-token-ro` must separately carry Workers Scripts
+  Read (for `tofu plan`/`tofu-drift` to refresh this resource at all) —
+  two different tokens, both need the scope. Either gap is a credential
+  scope change (§9) sequenced first; Cloudflare token-permission edits can
+  take a few minutes to propagate, so a fresh 403 right after editing
+  scope isn't necessarily wrong yet.
 
-- **Hand-populate the Worker secret** — the downloaded JSON key file's
-  full contents become `workers.tf`'s `GCP_SA_KEY_JSON` binding. Set
-  `TF_VAR_agent_memory_edge_origin_url` to the consumer's Cloud Run URL,
-  then:
+- **Apply the Worker**, now that both tokens are scoped. Set
+  `TF_VAR_agent_memory_edge_origin_url` to the consumer's Cloud Run URL
+  first:
 
   ```sh
-  just tofu-apply -target=cloudflare_workers_script.agent_memory_edge
+  just tofu-apply \
+    -target=cloudflare_workers_script.agent_memory_edge \
+    -target=cloudflare_workers_deployment.agent_memory_edge
   ```
 
-  applies with the code's `PLACEHOLDER` secret text, then hand-set the
-  real key value via the Cloudflare dashboard or `wrangler secret put
-GCP_SA_KEY_JSON --name agent-memory-edge < key.json` — `ignore_changes`
-  on the resource's `bindings` list means Tofu won't fight this. Delete
-  the local key file after.
+  Both targets, not just the script: `cloudflare_workers_script` only
+  uploads a version, `cloudflare_workers_deployment` is what actually
+  routes traffic to it — Cloudflare's gradual-deployments model, easy to
+  miss since nothing errors if you skip it, it just silently 404s every
+  request at the edge (caught live, #323). This first apply runs with the
+  code's `PLACEHOLDER` secret text.
 
-- **Precondition, verify before the apply above**: `/infra/cloudflare-api-token`
-  must carry Workers Scripts Edit — if it doesn't, that's a credential
-  scope change (§9) sequenced first.
+- **Create the SA key out-of-band** — console or `gcloud iam
+service-accounts keys create`, against the edge-invoker SA email from the
+  earlier output. Never `google_service_account_key` in Tofu (ADR-0031's
+  Decision): infra's root module is CI-applied via saved plan artifacts
+  in a public repo, and in-state custody would route the resulting
+  private key through that pipeline.
 
-- **Run #323's three gate checkpoints, in order**, before anything below
-  opens the door — full text in the issue:
-  1. Confirm live that Cloud Run consumes `X-Serverless-Authorization` for
-     its IAM check and passes `Authorization` through untouched.
-  2. One real Worker `fetch()` carrying both headers against a real MCP
-     call — Cloudflare must not strip the custom header, and MCP-over-HTTP
-     streaming must survive the hop.
-  3. Flood the raw `run.app` URL with no `Authorization`, then with a
+- **Hand-populate the Worker secret** — the downloaded JSON key file's
+  full contents become `workers.tf`'s `GCP_SA_KEY_JSON` binding: Cloudflare
+  dashboard, or `wrangler secret put GCP_SA_KEY_JSON --name agent-memory-edge
+< key.json` — `ignore_changes` on the resource's `bindings` list means
+  Tofu won't fight this. Delete the local key file after.
+
+- **Checkpoint 1** — confirm live, from a **GCP-internal** context (Cloud
+  Shell, a scratch Compute Engine VM, or Cloud Build — anything satisfying
+  today's still-locked ingress), that Cloud Run consumes
+  `X-Serverless-Authorization` for its IAM check and passes `Authorization`
+  through untouched, using a real `gcloud auth print-identity-token`
+  bearer. Failing this means re-planning, not patching — ADR-0031's own
+  revisit trigger. Full text in #323.
+
+- **Flip the consumer's ingress** — `agent-memory-server`'s `cloud_run.tf`
+  `ingress` → `INGRESS_TRAFFIC_ALL`, fixing the two comments asserting the
+  LB lock (`cloud_run.tf:20-21`, `outputs.tf:2`). That repo's own change,
+  not infra's. Do this **before** checkpoints 2 and 3, not after (ADR-0031's
+  2026-08-24 amendment) — both need external reachability to test at all,
+  and this isn't the risky step it looks like: the Service's IAM policy
+  stays empty, so `ingress: all` with no ID token still 403s at Google's
+  front end for free.
+
+- **Checkpoints 2 and 3**, now that ingress is open — full text in #323:
+  1. One real Worker `fetch()` carrying both headers against a real MCP
+     call, from outside GCP — Cloudflare must not strip the custom header,
+     and MCP-over-HTTP streaming must survive the hop.
+  2. Flood the raw `run.app` URL with no `Authorization`, then with a
      valid bearer but no ID token — both must 403 with instance-count and
-     billable-request metrics flat.
-
-  Any checkpoint failing means re-planning, not patching — ADR-0031's own
-  revisit trigger.
-
-- **Flip the consumer's ingress** — only once all three checkpoints pass:
-  `agent-memory-server`'s `cloud_run.tf` `ingress` → `INGRESS_TRAFFIC_ALL`,
-  fixing the two comments asserting the LB lock (`cloud_run.tf:20-21`,
-  `outputs.tf:2`) — that repo's own change, not infra's.
+     billable-request metrics flat. This is the design's actual proof, not
+     a formality: it's what confirms the cost-DoS fence holds now that the
+     network door is open.
 
 - **Then, and only then**: `dns.tf`'s custom hostname and the edge
   rate-limit (#250), a reachability check from a cloud surface, and

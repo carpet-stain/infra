@@ -12,6 +12,10 @@ WIF-federated" row. Both ADRs keep their original prose plus a dated
 `Amended:` note pointing here — the rejected paths stay visible
 (`docs/adr/README.md`'s superseding convention).
 
+Gate sequencing corrected — #323 (2026-08-24): the ingress flip moves from
+Phase 5 into the Gate, a prerequisite for checkpoints 2/3, not a step
+gated behind them. See the Amendment section at the end.
+
 ## Context
 
 The agent-memory Cloud Run Service (ADR-0026) is `Ready` but unreachable:
@@ -152,3 +156,39 @@ here are unverified against a live origin.
 Refs: #323, #250, #227, #276, ADR-0016, ADR-0024, ADR-0026, ADR-0027,
 ADR-0028, ADR-0046 (dotfiles), agent-memory-server#36, dotfiles#634,
 dotfiles#636.
+
+## Amendment — #323 (2026-08-24): the ingress flip is a Gate prerequisite, not Phase 5
+
+Live-testing checkpoint 2 surfaced a circular dependency the 3 original
+plan-review rounds missed: Cloud Run's `ingress` is a **network-layer**
+gate, evaluated by Google's front end before the IAM/bearer check ever
+runs. While `ingress` stays `internal-and-cloud-load-balancing`, a
+request from outside GCP — even one carrying a perfectly valid
+`X-Serverless-Authorization` token — is rejected at the network layer
+(404, not 403, Google's documented behavior for ingress-blocked requests,
+chosen to avoid confirming the Service's existence to a disallowed
+network path). Checkpoints 2 and 3 both need external reachability to
+test at all, but the Decision's Consumer boundary bullet sequenced the
+ingress flip in Phase 5, gated _behind_ those same checkpoints —
+circular. Derivation: `carpet-stain/infra#323`'s comment thread.
+
+**Corrected order:**
+
+1. Checkpoint 1 (header passthrough) — test from a GCP-internal context
+   (Cloud Shell, a scratch Compute Engine VM, or Cloud Build — anything
+   satisfying today's ingress restriction) with a real
+   `gcloud auth print-identity-token` bearer. Doesn't need ingress open.
+2. Flip `ingress` to `INGRESS_TRAFFIC_ALL` — moved out of Phase 5, into
+   the Gate. Not the risky step it looked like bundled with Phase 5: the
+   Service's IAM policy stays empty, so `ingress: all` + no ID token
+   still 403s at Google's front end for free — exactly checkpoint 3's
+   success condition. The actually-visible/risky step is #250's DNS
+   cutover, downstream of this Gate entirely, not the flip.
+3. Checkpoint 2 (the Worker's real forwarding, from outside GCP) — only
+   testable now that ingress is open.
+4. Checkpoint 3 (the deny-path flood) — same; this is the design's actual
+   proof, run once the network door is open, not before.
+
+Phase 5 shrinks to the two LB-lock comment fixes (`cloud_run.tf:20-21`,
+`outputs.tf:2`) plus `agent-memory-server#36` — the ingress flip already
+happened above, at step 2.
