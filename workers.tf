@@ -37,3 +37,31 @@ resource "cloudflare_workers_script" "agent_memory_edge" {
     ignore_changes = [bindings]
   }
 }
+
+# cloudflare_workers_script only uploads a version — nothing serves traffic
+# without a deployment pointing at it. Latest by number, not hardcoded, so this stays correct across every future apply.
+data "cloudflare_worker_versions" "agent_memory_edge" {
+  account_id = var.cloudflare_account_id
+  worker_id  = cloudflare_workers_script.agent_memory_edge.script_name
+}
+
+locals {
+  agent_memory_edge_version_numbers = [
+    for v in data.cloudflare_worker_versions.agent_memory_edge.result : v.number
+  ]
+  agent_memory_edge_latest_version_id = one([
+    for v in data.cloudflare_worker_versions.agent_memory_edge.result :
+    v.id if v.number == max(local.agent_memory_edge_version_numbers...)
+  ])
+}
+
+resource "cloudflare_workers_deployment" "agent_memory_edge" {
+  account_id  = var.cloudflare_account_id
+  script_name = cloudflare_workers_script.agent_memory_edge.script_name
+  strategy    = "percentage"
+
+  versions = [{
+    percentage = 100
+    version_id = local.agent_memory_edge_latest_version_id
+  }]
+}
