@@ -156,10 +156,10 @@ locals {
     }
   }
 
-  # Deliberation-agent machine accounts — see #172/ADR-0035. One permission
-  # per collaborator, fleet-wide across local.repos by design (#335).
+  # Deliberation-agent machine accounts — see #172/ADR-0035. Don't raise past
+  # pull: triage/maintain 422 here, org-owned-repo-only on GitHub's API (#335).
   collaborators = {
-    "carpet-stain-backlog-manager" = { permission = "triage" }
+    "carpet-stain-backlog-manager" = { permission = "pull" }
     "carpet-stain-plan-reviewer"   = { permission = "pull" }
   }
 
