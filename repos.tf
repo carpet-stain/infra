@@ -156,9 +156,10 @@ locals {
     }
   }
 
-  # Deliberation-agent machine accounts — see #172/ADR-0035.
+  # Deliberation-agent machine accounts — see #172/ADR-0035. One permission
+  # per collaborator, fleet-wide across local.repos by design (#335).
   collaborators = {
-    "carpet-stain-backlog-manager" = { permission = "pull" }
+    "carpet-stain-backlog-manager" = { permission = "triage" }
     "carpet-stain-plan-reviewer"   = { permission = "pull" }
   }
 
