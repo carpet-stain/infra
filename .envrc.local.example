@@ -1,5 +1,6 @@
 # shellcheck shell=bash
-# Copy this file to .envrc.local and fill in the Cloudflare identifiers.
+# Copy this file to .envrc.local and fill in the values below as each
+# module's bootstrap reaches the point that needs them.
 # No GitHub token lives here (#151): the routine dev PAT — fine-grained,
 # Contents/Pull requests/Actions/Issues read-write, NOT Administration —
 # is gh's default keyring credential (`gh auth login --with-token`), and
@@ -24,57 +25,59 @@
 #   (paste the secret access key at the prompt; omitting -A is deliberate.)
 # Rotate the Keychain item by re-running the command above with -U.
 
-# Cloudflare account id that filmitinc.com and leppez.com's zones (#9)
-# belong to — not secret, but an account identifier, so it's env-sourced
-# like every other one here rather than a literal in dns.tf.
+# All values below are non-secret but account-identifying, so they stay
+# out of this public repo's committed .tf files the same way
+# cloudflare_account_id always has (ADR-0002) — env-sourced, never a
+# literal. Grouped by which module's `variable` block reads them.
+
+# ==== Root module (main.tf, applied via `just tofu`/`just tofu-apply`) =====
+
+# filmitinc.com and leppez.com's zones (#9) belong to this Cloudflare account.
 export TF_VAR_cloudflare_account_id=
 
-# GCP project hosting the vend-token dispatch job (ADR-0024, #191) — not
-# secret, account-identifying, same category as the Cloudflare id above.
-# `just tofu-gcp` needs both; `google_region` defaults to us-central1 if left
-# unset. GOOGLE_APPLICATION_CREDENTIALS isn't set here — auth rides
+# The agent-memory edge invoker (ADR-0031, #323) — the Worker-minted-ID-
+# token fence replacing ADR-0026's never-built allUsers path. Left blank
+# until the consumer's first deploy names both (docs/BOOTSTRAP.md §20).
+export TF_VAR_agent_memory_edge_origin_url=
+
+# ==== iam/ module (iam/main.tf, applied via `just tofu-iam`) ===============
+
+# Numeric unique_ids read after gcp/'s apply creates each SA (docs/BOOTSTRAP.md
+# §17/§18's chicken-and-egg ordering) — left blank until then. Adding a new
+# GCP→AWS federation consumer's own *_service_account_unique_id var? Add its
+# export here in the same change (§17's add-a-consumer note, #257) —
+# `just tofu-iam apply` now fails loud on one that's missing, but only once
+# the export exists to fill in.
+export TF_VAR_gcp_dispatch_service_account_unique_id=
+export TF_VAR_gcp_agent_memory_service_account_unique_id=
+
+# AWS Budgets notification address (#233, epic #230).
+export TF_VAR_aws_budget_notification_email=
+
+# ==== gcp/ module (gcp/main.tf, applied via `just tofu-gcp`) ===============
+
+# GCP project hosting the vend-token dispatch job (ADR-0024, #191) and every
+# other gcp/ resource. `google_region` defaults to us-central1 if left unset.
+# GOOGLE_APPLICATION_CREDENTIALS isn't set here — auth rides
 # `gcloud auth application-default login` (docs/BOOTSTRAP.md §17).
 export TF_VAR_google_project_id=
 export TF_VAR_google_region=
 
-# GCP Billing Budgets (#276, epic #230) — not secret, account-identifying,
-# same category as the ids above.
+# GCP Billing Budgets (#276, epic #230).
 export TF_VAR_gcp_billing_account_id=
 export TF_VAR_gcp_budget_notification_email=
 
-# Resolved only after gcp/'s and iam/'s first bootstrap applies
-# (docs/BOOTSTRAP.md §17's chicken-and-egg ordering) — not secret (a
-# numeric SA id, a role ARN, and an image tag grant nothing by
-# themselves), left blank until then. Adding a new GCP→AWS federation
-# consumer's own *_service_account_unique_id var? Add its export here in
-# the same change (docs/BOOTSTRAP.md §17's add-a-consumer note, #257) —
-# `just tofu-iam apply` now fails loud on one that's missing, but only
-# once the export exists to fill in.
-export TF_VAR_gcp_dispatch_service_account_unique_id=
+# iam/'s dispatch_read_role_arn output and the built dispatch image ref —
+# both resolved only after iam/'s apply and the manual image push
+# (docs/BOOTSTRAP.md §17's chicken-and-egg ordering), left blank until then.
 export TF_VAR_aws_dispatch_role_arn=
 export TF_VAR_dispatch_image=
 
-# The agent-memory bootstrap seam (ADR-0026, #240) — the deploy sub is
-# built from agent-memory-server's repo id, the unique_id read after
-# gcp/'s apply creates the runtime SA (docs/BOOTSTRAP.md §18). Not secret,
-# left blank until each exists.
+# The agent-memory bootstrap seam (ADR-0026, #240) — the deploy sub is built
+# from agent-memory-server's repo id; the plan-read sub is its pull_request
+# twin, a distinct WIF provider so a PR job can never present the apply-only
+# sub (#272); the Service name is the consumer's own agent-memory-<role>
+# shape. Left blank until each exists (docs/BOOTSTRAP.md §18/§19).
 export TF_VAR_agent_memory_deploy_sub=
-export TF_VAR_gcp_agent_memory_service_account_unique_id=
-
-# agent-memory-server's CI-apply seam (docs/BOOTSTRAP.md §19, #272) — the
-# plan-read sub is agent-memory-server's pull_request twin of the
-# deploy sub above, a distinct WIF provider so a PR job can never present
-# the apply-only sub. Not secret, left blank until §19's bootstrap runs.
 export TF_VAR_agent_memory_plan_read_sub=
-
-# The agent-memory edge invoker (ADR-0031, #323) — the Worker-minted-ID-
-# token fence replacing ADR-0026's never-built allUsers path. Not secret
-# (a Service name and a Cloud Run URL grant nothing without the SA key
-# gcp/'s IAM binding pins), left blank until the consumer's first deploy
-# names both (docs/BOOTSTRAP.md §20).
 export TF_VAR_agent_memory_service_name=
-export TF_VAR_agent_memory_edge_origin_url=
-
-# AWS Budgets notification address (#233, epic #230) — not secret, but
-# account-identifying, same category as the Cloudflare id above.
-export TF_VAR_aws_budget_notification_email=
