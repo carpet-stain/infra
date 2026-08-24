@@ -880,4 +880,49 @@ resource "aws_accessanalyzer_analyzer" "external_access" {
   type          = "ACCOUNT"
 }
 
+# --- Account guardrails: Budgets (#233, epic #230) --------------------------
+
+# Mirrors BOOTSTRAP.md §3's manual zero-spend template — Tofu-owned now.
+# No forecast leg: forecasting a near-zero budget is meaningless.
+resource "aws_budgets_budget" "zero_spend" {
+  name         = "infra-zero-spend"
+  budget_type  = "COST"
+  limit_amount = "0.01"
+  limit_unit   = "USD"
+  time_unit    = "MONTHLY"
+
+  notification {
+    comparison_operator        = "GREATER_THAN"
+    threshold                  = 100
+    threshold_type             = "PERCENTAGE"
+    notification_type          = "ACTUAL"
+    subscriber_email_addresses = [var.aws_budget_notification_email]
+  }
+}
+
+locals {
+  # $20/$50/$100 tiers, forecast + actual (#233) — a $20 forecast alone
+  # would miss a slow leak the zero-spend budget above already catches.
+  aws_budget_alert_tiers = [20, 50, 100]
+}
+
+resource "aws_budgets_budget" "spend_alerts" {
+  name         = "infra-spend-alerts"
+  budget_type  = "COST"
+  limit_amount = "100"
+  limit_unit   = "USD"
+  time_unit    = "MONTHLY"
+
+  dynamic "notification" {
+    for_each = setproduct(local.aws_budget_alert_tiers, ["ACTUAL", "FORECASTED"])
+    content {
+      comparison_operator        = "GREATER_THAN"
+      threshold                  = notification.value[0]
+      threshold_type             = "ABSOLUTE_VALUE"
+      notification_type          = notification.value[1]
+      subscriber_email_addresses = [var.aws_budget_notification_email]
+    }
+  }
+}
+
 # infra-app-runtime: reserved name/path only, no role, until a workload exists (ADR-0010).

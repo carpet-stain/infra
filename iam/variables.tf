@@ -61,3 +61,14 @@ variable "gcp_agent_memory_service_account_unique_id" {
 
 # Revisit trigger: a 3rd federation consumer is where #257's declined
 # resolver script gets reconsidered — see #257 for the hand-paste rationale.
+
+variable "aws_budget_notification_email" {
+  type        = string
+  nullable    = false
+  description = <<-EOT
+    Email address AWS Budgets notifies (#233, epic #230). Not secret, but
+    account-identifying, so it stays out of this public repo the same way
+    cloudflare_account_id does (root variables.tf) — fed via
+    TF_VAR_aws_budget_notification_email from .envrc.local.
+  EOT
+}
