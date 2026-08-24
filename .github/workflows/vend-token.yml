@@ -55,6 +55,15 @@ jobs:
           delim="EOF_$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"
           { echo "GH_APP_PRIVATE_KEY<<${delim}"; printf '%s\n' "$value"; echo "$delim"; } >>"$GITHUB_OUTPUT"
 
+      # Derived from repos.tf (#265's precedent), minus infra: #51's crafted-PR
+      # containment, ADR-0008's #163 amendment. A repo joining local.repos now
+      # reaches this list automatically instead of drifting (#331).
+      - name: Derive managed-repo list
+        id: repo-list
+        uses: ./.github/actions/derive-repo-list
+        with:
+          exclude: infra
+
       # Scoped: {contents, issues, pull_requests, actions, checks, workflows}: write, no
       # administration, repositories excludes infra — full per-permission history in ADR-0008's #163 amendment.
       - name: Mint scoped token
@@ -63,7 +72,7 @@ jobs:
         with:
           client-id: ${{ vars.GH_APP_CLIENT_ID }}
           private-key: ${{ steps.ssm-key.outputs.GH_APP_PRIVATE_KEY }}
-          repositories: dotfiles,project-starter-template,template-e2e,agents
+          repositories: ${{ steps.repo-list.outputs.repositories }}
           permission-contents: write
           permission-issues: write
           permission-pull-requests: write
