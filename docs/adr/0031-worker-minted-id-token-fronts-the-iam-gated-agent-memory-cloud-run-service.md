@@ -139,6 +139,17 @@ here are unverified against a live origin.
   to `run.invoker` on this one Service; the consumer's
   `max_instance_count` (not this ADR's scope) bounds the burn, it doesn't
   neutralize it.
+- **The configured health-check path bypasses IAM** (found live, checkpoint 3,
+  2026-08-24): Cloud Run exempts `cloud_run.tf`'s startup-probe path
+  (`/healthz`) from the IAM check by path match, not by caller identity —
+  its own probing infrastructure can't present a service-to-service token,
+  so Google opens that one path to any unauthenticated caller as a side
+  effect. Low severity here: the handler returns only `{"status":"ok"}`,
+  no sensitive data, and doesn't spin an instance any faster than an
+  authenticated hit would. Still means "IAM policy empty" doesn't mean
+  zero unauthenticated surface on a Cloud Run service with a configured
+  health-check path — a general platform nuance, not specific to this
+  design, worth remembering next time a Service's probe path gets picked.
 - **BOOTSTRAP.md §18/§19 rewritten** to the new topology — the ingress-lock
   bullet (§18) and the `allUsers`-stays-out-of-band bullet (§19) both
   asserted the design this ADR replaces; a new §20 documents the edge
