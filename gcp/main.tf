@@ -303,3 +303,8 @@ resource "google_org_policy_policy" "storage_public_access_prevention" {
     }
   }
 }
+
+# --- GCP audit logging (#279, epic #230) ------------------------------------
+
+# Admin Activity logs are always-on/free, not a configurable resource.
+# Data Access logs stay off — cost/volume at this scale isn't worth it.
