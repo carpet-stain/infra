@@ -871,4 +871,13 @@ resource "aws_s3_account_public_access_block" "this" {
   restrict_public_buckets = true
 }
 
+# --- Account guardrails: IAM Access Analyzer (#235, epic #230) -------------
+
+# type = ACCOUNT is the free external-access analyzer; ORGANIZATION needs
+# Organizations (out of scope, #230) and UNUSED_ACCESS is the paid tier.
+resource "aws_accessanalyzer_analyzer" "external_access" {
+  analyzer_name = "infra-external-access"
+  type          = "ACCOUNT"
+}
+
 # infra-app-runtime: reserved name/path only, no role, until a workload exists (ADR-0010).
