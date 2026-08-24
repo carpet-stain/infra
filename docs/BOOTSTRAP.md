@@ -1083,6 +1083,60 @@ service-accounts keys create`, against the edge-invoker SA email from the
   dotfiles#636's cold-p95 go/no-go — same closing sequence §18 originally
   named.
 
+## 21. The Projects v2 board-sync PAT (#301)
+
+**Additive.** dotfiles' materialized project board (dotfiles#669) needs a
+credential with GitHub Projects v2 scope: the ambient App installation
+token can't reach Projects v2 at all — verified live, `Resource not
+accessible by integration` — and that's unconditional regardless of
+whether the board ends up user- or org-owned (dotfiles#669's own D1
+finding: `secrets.GITHUB_TOKEN` in Actions **is** the App installation
+token, and GitHub's default token can't write Projects v2 without an
+explicit `project` scope no App token carries). dotfiles#670 settled the
+board itself as user-owned, built now — that decision doesn't touch this
+section.
+
+**Classic, `project` scope only** — no `repo`/`public_repo`: this
+credential never touches repo content, only Projects v2 items and fields,
+so `project` is the whole grant (least-privilege, matching #301's
+acceptance). **Mint while signed into the account that owns the board**
+(carpet-stain's own personal account, not a machine collaborator — a
+collaborator role doesn't carry Projects v2 access to another account's
+project) — Settings → Developer settings → Tokens (classic) → Generate
+new token (classic), scope `project`, ~1yr expiry.
+
+**Publish to its own `/runtime/*` parameter**, the same
+`infra-console-admin` console write as §13/§14 (Systems Manager →
+Parameter Store → Create parameter):
+
+- Name: `/runtime/board-sync-pat`
+- Type: `SecureString`
+- KMS key: `alias/runtime-secrets`
+- Value: the classic PAT just minted
+
+Verify with a decrypting read as `infra-local-read`
+(`aws ssm get-parameter --name /runtime/board-sync-pat --with-decryption`)
+before treating it as live. **Not tofu-adopted**, same reasoning as
+§13/§14 — joins the vended token and the deliberation-agent PATs as a
+permanently-manual `/runtime/*` value. Set a rotation reminder for the
+PAT's ~1yr expiry and add it to the periodic audit alongside the other
+manual credentials below.
+
+**Fetch path, local:** `/runtime/board-sync-pat` sits in
+`infra-local-read`'s explicit allow-list (`iam/main.tf`).
+
+**Fetch path, CI:** `aws_iam_role.dotfiles_board_sync_read`
+(`dotfiles-board-sync-read`, `iam/main.tf`) — OIDC-assumed, trusting the
+same `dotfiles_hosted_runtime_sub` the §14 runner role trusts (a
+schedule/`workflow_dispatch` workflow on `main` presents an identical sub
+claim; GitHub's default OIDC claim has no workflow-file-level
+granularity), but its own role rather than a fifth Sid on that role — this
+credential's blast radius stays legible under its own name. Grants
+`ssm:GetParameter` on `/runtime/board-sync-pat` alone plus
+`kms:Decrypt` on the runtime tier key. dotfiles' `board-sync.yml`
+(dotfiles#669 Phase 3, not yet built) assumes this role the same way
+`pr-code-review.yml` assumes `pr-review-openrouter-read`.
+
 ## What's still manual, permanently
 
 Not a bootstrap-only list — these stay manual forever, for reasons
@@ -1129,6 +1183,9 @@ tooling gaps:
   and `ignore_changes`d, same as `/infra/*`; `agent-memory-plan-read` and
   `agent-memory-apply` join the periodic audit alongside
   `agent-memory-ssm-read`.
+- The board-sync PAT (§21, #301) — a classic `project`-scoped token minted
+  under the board owner's own account, no expiry-refresh path; joins the
+  periodic audit alongside the deliberation-agent PATs.
 - The elevated Keychain items' read prompt — the fence the containment
   invariant rests on, and one "Always Allow" click (or a confirm setting
   that skips the keychain password) disables it silently: found live in
