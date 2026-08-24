@@ -925,4 +925,88 @@ resource "aws_budgets_budget" "spend_alerts" {
   }
 }
 
+# --- Account guardrails: CloudTrail (#234, epic #230) -----------------------
+
+# Name: BOOTSTRAP.md §3/#232's reserved prefix. No versioning/logging bucket for a solo-account log bucket — #230's scope.
+#trivy:ignore:AVD-AWS-0089 trivy:ignore:AVD-AWS-0090
+resource "aws_s3_bucket" "cloudtrail" {
+  bucket = "infra-cloudtrail-${data.aws_caller_identity.this.account_id}"
+}
+
+resource "aws_s3_bucket_public_access_block" "cloudtrail" {
+  bucket                  = aws_s3_bucket.cloudtrail.id
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+#trivy:ignore:AVD-AWS-0132 -- SSE-S3 by design, see the block below
+resource "aws_s3_bucket_server_side_encryption_configuration" "cloudtrail" {
+  bucket = aws_s3_bucket.cloudtrail.id
+
+  rule {
+    apply_server_side_encryption_by_default {
+      # SSE-S3, never a tier KMS key — a KMS trail needs kms:Put* and would
+      # add a CloudTrail grant to a crown-jewel key policy (#230).
+      sse_algorithm = "AES256"
+    }
+  }
+}
+
+resource "aws_s3_bucket_lifecycle_configuration" "cloudtrail" {
+  bucket = aws_s3_bucket.cloudtrail.id
+
+  rule {
+    id     = "expire-trail-logs"
+    status = "Enabled"
+
+    filter {}
+
+    expiration {
+      days = 365
+    }
+  }
+}
+
+resource "aws_s3_bucket_policy" "cloudtrail" {
+  bucket = aws_s3_bucket.cloudtrail.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid       = "AWSCloudTrailAclCheck"
+        Effect    = "Allow"
+        Principal = { Service = "cloudtrail.amazonaws.com" }
+        Action    = "s3:GetBucketAcl"
+        Resource  = aws_s3_bucket.cloudtrail.arn
+      },
+      {
+        Sid       = "AWSCloudTrailWrite"
+        Effect    = "Allow"
+        Principal = { Service = "cloudtrail.amazonaws.com" }
+        Action    = "s3:PutObject"
+        Resource  = "${aws_s3_bucket.cloudtrail.arn}/AWSLogs/${data.aws_caller_identity.this.account_id}/*"
+        Condition = {
+          StringEquals = {
+            "s3:x-amz-acl" = "bucket-owner-full-control"
+          }
+        }
+      },
+    ]
+  })
+}
+
+# management-events only (default selector, #234); SSE-S3 + no CloudWatch stream are #230's explicit choices.
+#trivy:ignore:AVD-AWS-0015 trivy:ignore:AVD-AWS-0162
+resource "aws_cloudtrail" "this" {
+  name                          = "infra-management-events"
+  s3_bucket_name                = aws_s3_bucket.cloudtrail.id
+  is_multi_region_trail         = true
+  include_global_service_events = true
+  enable_log_file_validation    = true
+
+  depends_on = [aws_s3_bucket_policy.cloudtrail]
+}
+
 # infra-app-runtime: reserved name/path only, no role, until a workload exists (ADR-0010).

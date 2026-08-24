@@ -307,7 +307,10 @@ unattended crown-jewel read; the two fences above; root still
 break-glass-only; the elevated Keychain
 items still prompting on every read (`audit-keychain-gate`, dotfiles-
 deployed since the items are machine state, #167 — the gate was found
-silently disabled once).
+silently disabled once); the four AWS guardrails (#230, `iam/main.tf`)
+still applied and drift-free — routine CI drift detection doesn't cover
+`iam/` — with CloudTrail/Access Analyzer findings reviewed each pass
+(ADR-0027, cold forensics, no live alert path).
 
 **If vending stops:** scheduled workflows auto-disable after 60 days of repo
 inactivity. Local shells then loud-fail on a stale token — the designed
