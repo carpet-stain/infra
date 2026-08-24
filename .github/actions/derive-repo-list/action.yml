@@ -10,9 +10,20 @@ description: >
   explicit local.repos set — not the App installation's full repo list
   (rejected in #263: an ADR-0004/0005 posture change).
 
+inputs:
+  exclude:
+    description: >
+      Comma-separated local.repos keys to drop from the emitted list, for a
+      consumer that must not receive some of local.repos' own scope (e.g.
+      vend-token.yml excluding infra — #51's crafted-PR containment,
+      ADR-0008's #163 amendment). Empty by default: the four tofu workflows
+      pass nothing since they manage every local.repos entry, infra included.
+    required: false
+    default: ""
+
 outputs:
   repositories:
-    description: Comma-separated local.repos keys.
+    description: Comma-separated local.repos keys, minus any excluded.
     value: ${{ steps.parse.outputs.repositories }}
 
 runs:
@@ -21,6 +32,8 @@ runs:
     - name: Parse local.repos keys
       id: parse
       shell: bash
+      env:
+        EXCLUDE: ${{ inputs.exclude }}
       run: |
         set -euo pipefail
         list=$(awk '/^  repos = \{/ { f = 1; next }
@@ -36,4 +49,10 @@ runs:
             exit 1
             ;;
         esac
+        if [[ -n "$EXCLUDE" ]]; then
+          list=$(comm -23 \
+            <(tr ',' '\n' <<<"$list" | sort) \
+            <(tr ',' '\n' <<<"$EXCLUDE" | sort) |
+            paste -sd, -)
+        fi
         echo "repositories=${list}" >>"$GITHUB_OUTPUT"
