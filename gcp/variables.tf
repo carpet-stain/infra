@@ -96,3 +96,23 @@ variable "agent_memory_service_name" {
     error_message = "Must match the consumer's agent-memory-<role> Service name shape — a wrong or empty value refuses to plan rather than 404ing at apply (#227)."
   }
 }
+
+variable "gcp_billing_account_id" {
+  type        = string
+  nullable    = false
+  description = <<-EOT
+    Bare billing account id (the XXXXXX-XXXXXX-XXXXXX form, not the
+    billingAccounts/ prefix) this project bills against (#276, epic
+    #230). Not secret, but account-identifying, same category as
+    google_project_id.
+  EOT
+}
+
+variable "gcp_budget_notification_email" {
+  type        = string
+  nullable    = false
+  description = <<-EOT
+    Email address GCP Billing Budgets notifies (#276, epic #230). Not
+    secret, but account-identifying, same category as google_project_id.
+  EOT
+}

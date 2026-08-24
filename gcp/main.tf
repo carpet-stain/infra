@@ -308,3 +308,83 @@ resource "google_org_policy_policy" "storage_public_access_prevention" {
 
 # Admin Activity logs are always-on/free, not a configurable resource.
 # Data Access logs stay off — cost/volume at this scale isn't worth it.
+
+# --- Account guardrails: GCP Billing Budgets (#276, epic #230) -------------
+
+resource "google_project_service" "billingbudgets" {
+  service            = "billingbudgets.googleapis.com"
+  disable_on_destroy = false
+}
+
+resource "google_project_service" "monitoring" {
+  service            = "monitoring.googleapis.com"
+  disable_on_destroy = false
+}
+
+resource "google_monitoring_notification_channel" "budget_email" {
+  project      = var.google_project_id
+  display_name = "infra budget alerts"
+  type         = "email"
+  labels = {
+    email_address = var.gcp_budget_notification_email
+  }
+}
+
+# Mirrors AWS Budgets' zero-spend floor (iam/main.tf's aws_budgets_budget.zero_spend, #233).
+resource "google_billing_budget" "zero_spend" {
+  billing_account = "billingAccounts/${var.gcp_billing_account_id}"
+  display_name    = "infra-zero-spend"
+
+  budget_filter {
+    projects = ["projects/${var.google_project_id}"]
+  }
+
+  amount {
+    specified_amount {
+      currency_code = "USD"
+      units         = "0"
+      nanos         = 10000000 # $0.01
+    }
+  }
+
+  threshold_rules {
+    threshold_percent = 1.0
+    spend_basis       = "CURRENT_SPEND"
+  }
+
+  all_updates_rule {
+    monitoring_notification_channels = [google_monitoring_notification_channel.budget_email.id]
+    disable_default_iam_recipients   = true
+  }
+}
+
+# $20/$50/$100 as % of a $100 budget — Budgets has no ABSOLUTE_VALUE
+# threshold type (unlike AWS), so percent-of-amount is the GCP-native shape.
+resource "google_billing_budget" "spend_alerts" {
+  billing_account = "billingAccounts/${var.gcp_billing_account_id}"
+  display_name    = "infra-spend-alerts"
+
+  budget_filter {
+    projects = ["projects/${var.google_project_id}"]
+  }
+
+  amount {
+    specified_amount {
+      currency_code = "USD"
+      units         = "100"
+    }
+  }
+
+  dynamic "threshold_rules" {
+    for_each = setproduct([0.2, 0.5, 1.0], ["CURRENT_SPEND", "FORECASTED_SPEND"])
+    content {
+      threshold_percent = threshold_rules.value[0]
+      spend_basis       = threshold_rules.value[1]
+    }
+  }
+
+  all_updates_rule {
+    monitoring_notification_channels = [google_monitoring_notification_channel.budget_email.id]
+    disable_default_iam_recipients   = true
+  }
+}
