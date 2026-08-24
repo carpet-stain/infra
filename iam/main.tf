@@ -861,4 +861,14 @@ resource "aws_iam_user_policy" "console_admin" {
   })
 }
 
+# --- Account guardrails: S3 Block Public Access (#236, epic #230) ----------
+
+# The org-free preventive freebie — no Organizations/SCP needed for this one.
+resource "aws_s3_account_public_access_block" "this" {
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
 # infra-app-runtime: reserved name/path only, no role, until a workload exists (ADR-0010).
