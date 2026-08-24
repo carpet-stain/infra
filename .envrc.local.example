@@ -37,6 +37,11 @@ export TF_VAR_cloudflare_account_id=
 export TF_VAR_google_project_id=
 export TF_VAR_google_region=
 
+# GCP Billing Budgets (#276, epic #230) — not secret, account-identifying,
+# same category as the ids above.
+export TF_VAR_gcp_billing_account_id=
+export TF_VAR_gcp_budget_notification_email=
+
 # Resolved only after gcp/'s and iam/'s first bootstrap applies
 # (docs/BOOTSTRAP.md §17's chicken-and-egg ordering) — not secret (a
 # numeric SA id, a role ARN, and an image tag grant nothing by
