@@ -39,4 +39,10 @@ provider "aws" {
   region     = "us-east-1"
   access_key = var.aws_access_key_id
   secret_key = var.aws_secret_access_key
+
+  # with-infra-secrets.sh's AWS_ENDPOINT_URL_S3 (R2, for the backend above)
+  # leaks into every S3 call this process makes — pin real AWS back (#234, caught live).
+  endpoints {
+    s3 = "https://s3.us-east-1.amazonaws.com"
+  }
 }
