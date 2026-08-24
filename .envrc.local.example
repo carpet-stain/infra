@@ -69,3 +69,7 @@ export TF_VAR_agent_memory_plan_read_sub=
 # names both (docs/BOOTSTRAP.md §20).
 export TF_VAR_agent_memory_service_name=
 export TF_VAR_agent_memory_edge_origin_url=
+
+# AWS Budgets notification address (#233, epic #230) — not secret, but
+# account-identifying, same category as the Cloudflare id above.
+export TF_VAR_aws_budget_notification_email=
