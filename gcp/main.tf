@@ -289,3 +289,17 @@ resource "google_cloud_run_v2_service_iam_member" "agent_memory_edge_invoker_can
   role     = "roles/run.invoker"
   member   = "serviceAccount:${google_service_account.agent_memory_edge_invoker.email}"
 }
+
+# --- Account guardrails: GCS public-access prevention (#278, epic #230) ----
+
+# Project-scoped org policy — no GCP Organization needed (#230's org-free stance).
+resource "google_org_policy_policy" "storage_public_access_prevention" {
+  name   = "projects/${var.google_project_id}/policies/storage.publicAccessPrevention"
+  parent = "projects/${var.google_project_id}"
+
+  spec {
+    rules {
+      enforce = "TRUE"
+    }
+  }
+}
