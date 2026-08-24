@@ -453,6 +453,48 @@ resource "aws_iam_role_policy" "dotfiles_hosted_runtime_read" {
   })
 }
 
+# dotfiles' board-sync.yml (#301) — own role, not a Sid on
+# dotfiles_hosted_runtime_read below; see BOOTSTRAP.md §21 for why.
+resource "aws_iam_role" "dotfiles_board_sync_read" {
+  name = "dotfiles-board-sync-read"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Federated = aws_iam_openid_connect_provider.github.arn }
+      Action    = "sts:AssumeRoleWithWebIdentity"
+      Condition = {
+        StringEquals = {
+          "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
+          "token.actions.githubusercontent.com:sub" = local.dotfiles_hosted_runtime_sub
+        }
+      }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "dotfiles_board_sync_read" {
+  name = "read-board-sync-pat"
+  role = aws_iam_role.dotfiles_board_sync_read.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid      = "ReadBoardSyncPatOnly"
+        Effect   = "Allow"
+        Action   = "ssm:GetParameter"
+        Resource = "${local.ssm_param_arn}/runtime/board-sync-pat"
+      },
+      {
+        Sid      = "DecryptRuntimeTier"
+        Effect   = "Allow"
+        Action   = "kms:Decrypt"
+        Resource = aws_kms_key.runtime_secrets.arn
+      },
+    ]
+  })
+}
+
 # --- GCP Cloud Run dispatch consumer (OIDC-assumed, ADR-0024, #191) --------
 
 # accounts.google.com is an AWS-native principal — literal string, never an
@@ -709,6 +751,7 @@ resource "aws_iam_user_policy" "local_read" {
           "${local.ssm_param_arn}/runtime/agent-memory-backup-key",
           "${local.ssm_param_arn}/runtime/agent-memory/backlog-manager/bearer-tokens",
           "${local.ssm_param_arn}/runtime/agent-memory/backlog-manager/connection-uri",
+          "${local.ssm_param_arn}/runtime/board-sync-pat",
         ]
       },
       {

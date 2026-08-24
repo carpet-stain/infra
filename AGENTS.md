@@ -357,6 +357,22 @@ issue #228 automates it.
 Carries no built-in expiry — rotate ≤1yr by policy, joins the periodic
 audit list above.
 
+`/runtime/board-sync-pat` (dotfiles#669's board-sync workflow, #301) is a
+sixth: a classic PAT, **`project` scope only** — the ambient App
+installation token can't reach Projects v2 at all regardless of board
+ownership, verified live and unconditional (dotfiles#669's D1 finding).
+Minted while signed into the board-owning account (not a machine
+collaborator — Projects v2 access doesn't come from the collaborator
+role), published by `infra-console-admin` the same way as the PATs above
+(`docs/BOOTSTRAP.md` §21), never tofu-adopted. Sits in
+`infra-local-read`'s allow-list and its own dedicated OIDC role,
+`dotfiles-board-sync-read` (`iam/main.tf`) — a separate role from
+`dotfiles-hosted-runtime-read` even though both trust the identical
+`dotfiles_hosted_runtime_sub` (schedule/`workflow_dispatch` on `main`
+carries no workflow-file-level claim), so this credential's grant stays
+named and doesn't fold into that role's unrelated bundle. Rotate ~1yr
+(PAT expiry) — joins the periodic audit list above.
+
 ### CI secrets and variables
 
 > Realizes ADR-0010 on top of ADR-0003's saved-plan model: CI holds **no
