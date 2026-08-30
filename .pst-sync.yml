@@ -1,0 +1,50 @@
+# PST's sync-channel ownership manifest (project-starter-template#147). PST
+# authors this list; a release adds/removes entries, never a hand-edit here
+# except to flip `owned: true` on an entry (see reusable-sync.yml).
+#
+# Language-overlay files (justfile.lang, lefthook-lang.yml) aren't listed
+# here — lefthook-lang.yml is rung 3 by design (ADR-0006), and justfile.lang
+# has no append mechanism yet from the python/typescript templates
+# (project-starter-template#148 follow-up).
+#
+# `anchor` tracks the PST release this entry's content actually ships in —
+# bump every entry together right before cutting that release, not before.
+files:
+  # lefthook-base.yml/justfile.base don't exist here — infra's lefthook.yml
+  # and justfile are collapsed, never split (ADR-0002, #21); no row to sync.
+  - path: lefthook.yml
+    source: git-flow/template/lefthook.yml
+    anchor: v1.2.0
+    owned: true
+  - path: justfile
+    source: git-flow/template/justfile
+    anchor: v1.2.0
+    owned: true
+  - path: scripts/new-adr.sh
+    source: git-flow/template/scripts/new-adr.sh
+    anchor: v1.2.0
+    owned: true
+  - path: scripts/check-comment-concision.sh
+    source: git-flow/template/scripts/check-comment-concision.sh
+    anchor: v1.2.0
+    owned: true
+  - path: scripts/check-envrc-local-example.sh
+    source: git-flow/template/scripts/check-envrc-local-example.sh
+    anchor: v1.2.0
+    owned: true
+  - path: .editorconfig
+    source: git-flow/template/.editorconfig
+    anchor: v1.2.0
+  - path: .gitleaks.toml
+    source: git-flow/template/.gitleaks.toml
+    anchor: v1.2.0
+    owned: true
+  - path: .markdownlint-cli2.yaml
+    source: git-flow/template/.markdownlint-cli2.yaml
+    anchor: v1.2.0
+  - path: .yamlfmt
+    source: git-flow/template/.yamlfmt
+    anchor: v1.2.0
+  - path: .prettierrc.json
+    source: git-flow/template/.prettierrc.json
+    anchor: v1.2.0

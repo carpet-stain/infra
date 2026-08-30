@@ -1,2 +1,6 @@
 formatter:
   retain_line_breaks: true
+  # Keep intentionally-wrapped `>-` folded scalars as written instead of
+  # collapsing them onto one line — retain_line_breaks doesn't reach inside
+  # folded scalars (dotfiles#409).
+  scan_folded_as_literal: true
