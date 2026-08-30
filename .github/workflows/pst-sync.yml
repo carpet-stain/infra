@@ -1,0 +1,21 @@
+name: Sync from project-starter-template
+
+# Thin caller — the body lives in the template source repo's
+# reusable-sync.yml — pinned to its moving major tag (its ADR-0004/#110).
+
+# workflow_dispatch alongside schedule: #147's manual on-demand trigger, same
+# idiom as e2e-live.yml (no issue event here, so no blocked-reconcile mirror).
+on:
+  schedule:
+    - cron: "37 14 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  pst-sync:
+    uses: carpet-stain/project-starter-template/.github/workflows/reusable-sync.yml@v1
+    secrets: inherit

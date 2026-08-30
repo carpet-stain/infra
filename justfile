@@ -21,6 +21,17 @@ adr *args:
 format:
     git ls-files -z '*.md' ':!:CHANGELOG.md' ':!:.claude/agent-memory/**' | xargs -0 prettier --write
 
+# Wraps the PATH-deployed record-token-cost (dotfiles owns the implementation,
+# git-flow/README.md has the pointer); skips rather than fails if it's absent.
+token-cost issue:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if ! command -v record-token-cost >/dev/null 2>&1; then
+      echo "token-cost: record-token-cost not on PATH — skipping (see git-flow/README.md)."
+      exit 0
+    fi
+    record-token-cost {{ issue }}
+
 # Run OpenTofu (init, plan, state, ...). The backend passphrase + R2 creds are
 # fetched from SSM at invocation via the Keychain-gated wrapper (#126,
 # ADR-0010; the never-ambient rule is #59/ADR-0009) — expect one Keychain
