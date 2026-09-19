@@ -88,7 +88,7 @@ jobs:
       # the SSM fetch below, which reads with these creds. The R2 backend
       # cedes the AWS_* names; its creds move to -backend-config.
       - name: Assume infra-apply via OIDC
-        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
         with:
           role-to-assume: ${{ vars.AWS_APPLY_ROLE_ARN }}
           aws-region: us-east-1

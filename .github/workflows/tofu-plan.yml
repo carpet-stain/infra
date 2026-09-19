@@ -65,7 +65,7 @@ jobs:
       # backend cedes the AWS_* names to this; its credentials move to
       # -backend-config flags in the init step below.
       - name: Assume infra-plan-read via OIDC
-        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
         with:
           role-to-assume: ${{ vars.AWS_PLAN_ROLE_ARN }}
           aws-region: us-east-1
